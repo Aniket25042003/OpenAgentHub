@@ -1,0 +1,29 @@
+manifestVersion: 1
+name: aniketpatel/pr-reviewer
+version: 1.0.0
+author: aniketpatel
+description: >-
+  Reviews a GitHub pull request for bugs, security issues and style problems.
+  Fetches the diff from the GitHub API and produces structured findings using
+  an LLM (fallback: static heuristics when no API key is configured).
+license: MIT
+framework:
+  name: openagenthub
+  version: 0.1.0
+runtime:
+  language: python
+  python: ">=3.10"
+models:
+  supported: [openai, anthropic, deepseek, ollama, local]
+permissions:
+  - network
+secrets:
+  - GITHUB_TOKEN
+  - OPENAI_API_KEY
+  - DEEPSEEK_API_KEY
+interfaces:
+  cli:
+    command: "python main.py"
+    input: json
+    output: json
+tags: [github, code-review, devtools, security]

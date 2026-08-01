@@ -1,0 +1,25 @@
+manifestVersion: 1
+name: aniketpatel/meeting-notes
+version: 1.0.0
+author: aniketpatel
+description: >-
+  A Model Context Protocol (MCP) server that exposes a `summarize_transcript`
+  tool. Feed it a meeting transcript and it returns structured minutes:
+  decisions, action items and open questions.
+license: MIT
+framework:
+  name: openagenthub
+  version: 0.1.0
+runtime:
+  language: python
+  python: ">=3.10"
+models:
+  supported: [openai, anthropic, deepseek, local]
+permissions:
+  - none
+interfaces:
+  mcp:
+    entrypoint: "python mcp_server.py"
+    transport: stdio
+    tools: [summarize_transcript]
+tags: [mcp, meetings, productivity]

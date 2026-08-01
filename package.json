@@ -1,0 +1,17 @@
+{
+  "name": "openagenthub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The universal package manager & registry for AI agents",
+  "workspaces": [
+    "sdk",
+    "cli",
+    "runtime",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @openagenthub/sdk && npm run build -w @openagenthub/runtime && npm run build -w @openagenthub/cli",
+    "test": "npm run build && npm run test -w @openagenthub/sdk && npm run test -w @openagenthub/runtime && npm run test -w @openagenthub/cli",
+    "test:registry": "cd registry && uv run pytest -q"
+  }
+}

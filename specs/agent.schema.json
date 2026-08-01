@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagenthub.dev/specs/agent.schema.json",
+  "title": "OpenAgentHub agent manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "name",
+    "version",
+    "author",
+    "description",
+    "license",
+    "runtime",
+    "models",
+    "interfaces"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "const": 1,
+      "description": "Version of the manifest specification. Must be 1."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?/[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$",
+      "maxLength": 100,
+      "description": "Namespace/name. Must be lowercase, slug-safe."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "description": "Semantic version."
+    },
+    "author": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "license": { "type": "string", "minLength": 1, "maxLength": 50 },
+    "homepage": { "type": "string", "format": "uri" },
+    "repository": { "type": "string", "format": "uri" },
+    "keywords": { "type": "array", "items": { "type": "string", "maxLength": 30 }, "uniqueItems": true, "maxItems": 20 },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language"],
+      "properties": {
+        "language": { "enum": ["python", "node", "go", "rust", "other"] },
+        "python": { "type": "string", "maxLength": 50, "description": "PEP 440 version specifier." },
+        "node": { "type": "string", "maxLength": 50, "description": "semver range." },
+        "sandbox": { "enum": ["auto", "container", "isolated-process"], "default": "auto" }
+      }
+    },
+    "framework": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "maxLength": 50 },
+        "version": { "type": "string", "maxLength": 30 }
+      },
+      "required": ["name"]
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported"],
+      "properties": {
+        "supported": {
+          "type": "array",
+          "items": { "enum": ["openai", "anthropic", "google", "deepseek", "ollama", "mistral", "xai", "groq", "local", "custom"] },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      }
+    },
+    "interfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "At least one execution interface is required.",
+      "properties": {
+        "cli": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "input": { "enum": ["json", "args", "stdin"], "default": "json" },
+            "output": { "enum": ["json", "text"], "default": "json" }
+          }
+        },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["entrypoint"],
+          "properties": {
+            "entrypoint": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "transport": { "enum": ["stdio", "http", "sse"], "default": "stdio" },
+            "tools": { "type": "array", "items": { "type": "string", "maxLength": 100 }, "uniqueItems": true }
+          }
+        },
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["endpoint"],
+          "properties": {
+            "endpoint": { "type": "string", "format": "uri", "maxLength": 500 },
+            "methods": { "type": "array", "items": { "enum": ["GET", "POST"] }, "uniqueItems": true, "default": ["POST"] }
+          }
+        }
+      },
+      "anyOf": [{ "required": ["cli"] }, { "required": ["mcp"] }, { "required": ["http"] }]
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "enum": ["filesystem", "network", "github", "terminal", "browser", "camera", "microphone", "none"] },
+      "uniqueItems": true,
+      "description": "Capabilities the agent requests. 'none' must not be combined with others."
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pip": { "type": "array", "items": { "type": "string", "maxLength": 200 } },
+        "npm": { "type": "array", "items": { "type": "string", "maxLength": 200 } },
+        "system": { "type": "array", "items": { "type": "string", "maxLength": 100 } }
+      }
+    },
+    "tools": { "type": "array", "items": { "type": "string", "maxLength": 50 }, "uniqueItems": true },
+    "tags": { "type": "array", "items": { "type": "string", "maxLength": 30 }, "uniqueItems": true, "maxItems": 20 },
+    "secrets": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 64 },
+      "uniqueItems": true,
+      "description": "Environment variable names the agent requires at runtime. Names only, never values."
+    }
+  }
+}

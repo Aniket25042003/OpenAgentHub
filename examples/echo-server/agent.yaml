@@ -1,0 +1,27 @@
+manifestVersion: 1
+name: aniketpatel/echo-server
+version: 1.0.0
+author: aniketpatel
+description: >-
+  A stateless JSON echo agent. Run it as a CLI (echoes the input back) or
+  deploy it as an HTTP endpoint that echoes POSTed JSON.
+license: MIT
+framework:
+  name: openagenthub
+  version: 0.1.0
+runtime:
+  language: python
+  python: ">=3.10"
+models:
+  supported: [local]
+permissions:
+  - none
+interfaces:
+  cli:
+    command: "python main.py"
+    input: json
+    output: json
+  http:
+    endpoint: "http://localhost:8080/echo"
+    methods: [POST]
+tags: [demo, http, echo]

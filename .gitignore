@@ -1,0 +1,49 @@
+# --- Node / TypeScript workspaces (sdk, runtime, cli, web) ---
+node_modules/
+dist/
+web/.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+*.tgz
+
+# --- Python registry ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+registry/.venv/
+registry/storage/
+registry/*.db
+registry/*.db-journal
+registry/.env
+registry/*.pem
+
+# --- Environment / secrets (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+master.key
+config.json
+
+# --- Generated agent artifacts ---
+*.ahb
+*.sig.json
+.ahb/
+openagenthub.tgz
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Editor / IDE ---
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Logs / coverage ---
+coverage/
+*.log

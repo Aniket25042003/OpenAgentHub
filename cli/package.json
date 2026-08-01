@@ -1,0 +1,33 @@
+{
+  "name": "@openagenthub/cli",
+  "version": "0.1.0",
+  "description": "OpenAgentHub CLI: install, run, publish and manage AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "agent": "./bin/run.js"
+  },
+  "oclif": {
+    "bin": "agent",
+    "dirname": "agent",
+    "commands": "./dist/commands",
+    "topicSeparator": " ",
+    "topics": {
+      "env": { "description": "Manage encrypted secrets for an agent" },
+      "runtime": { "description": "Detect local runtimes" }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "@oclif/core": "^4.2.10",
+    "@openagenthub/runtime": "*",
+    "@openagenthub/sdk": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@openagenthub/runtime",
+  "version": "0.1.0",
+  "description": "OpenAgentHub runtime engine: sandboxed agent execution, secrets vault, model injection",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "@openagenthub/sdk": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

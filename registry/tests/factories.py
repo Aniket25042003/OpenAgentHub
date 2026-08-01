@@ -1,0 +1,44 @@
+import uuid
+
+from app.auth import issue_token
+from app.db import _session_factory
+from app.models import User
+from tests.helpers import hello_manifest, make_archive, make_keypair
+
+
+async def create_user(username: str | None = None) -> tuple[str, int]:
+    username = username or f"tester-{uuid.uuid4().hex[:8]}"
+    async with _session_factory() as session:
+        user = User(username=username)
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        uid = user.id
+    token = issue_token(uid, username)
+    return token, uid
+
+
+def auth_header(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def signed_package(namespace: str, name: str, version: str = "0.1.0", payload: dict | None = None):
+    key, priv, pub = make_keypair()
+    full_name = f"{namespace}/{name}"
+    manifest = hello_manifest(full_name, version)
+    files = {"agent.yaml": __import__("yaml").safe_dump(manifest), "app.py": "print('hi')\n"}
+    if payload:
+        files.update(payload)
+    archive, sig = make_archive(full_name, version, manifest, files, key, pub)
+    return archive, sig, manifest, pub
+
+
+async def publish(client, token, namespace, name, version, archive, sig):
+    return await client.put(
+        f"/api/v1/agents/{namespace}/{name}/versions/{version}",
+        headers=auth_header(token),
+        files={
+            "archive": (f"{name}-{version}.ahb", archive, "application/octet-stream"),
+            "signature": ("signature.sig.json", __import__("json").dumps(sig), "application/json"),
+        },
+    )
