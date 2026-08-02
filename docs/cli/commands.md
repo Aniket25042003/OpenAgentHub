@@ -102,6 +102,24 @@ Per-command behavior. Flags shown are the ones that matter; run
 
 - Detects python3, node, docker, ollama, uv, git and prints a status table.
 
+## `agent status`
+
+- Snapshot of the local machine + agent state: host (OS, arch, CPU/memory,
+  uptime), Docker server version, registry URL, installed OpenAgentHub agents,
+  detected third-party agents, and containers.
+- Third-party detection (OpenClaw, Hermes, ...) matches processes, config
+  files/dirs, and listening ports against a pluggable catalog
+  (`runtime/src/system/catalog.ts`).
+- Flags: `--json` (machine-readable snapshot), `--all` (include non-default
+  containers in the output).
+
+## `agent ps`
+
+- Lists Docker containers. By default only OpenAgentHub's own sandbox containers
+  (identified by their `oah-deps-*` dependency volume); `--all` shows every
+  container on the machine with a `docker ps`-style command.
+- Flags: `--json`.
+
 ## Error convention
 
 User-facing failures use `this.error(msg, { exit: 1 })`; genuine internal

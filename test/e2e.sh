@@ -30,7 +30,10 @@ assert_match() { grep -q "$2" <<<"$1" || fail "expected /$2/ in: ${1:0:300}"; }
 assert_contains() { [[ "$1" == *"$2"* ]] || fail "expected to contain '$2' in: ${1:0:300}"; }
 
 cleanup() {
-  if [[ -n "${SERVER_PID:-}" ]]; then kill "$SERVER_PID" 2>/dev/null || true; fi
+  if [[ -n "${SERVER_PID:-}" ]]; then
+    kill "$SERVER_PID" 2>/dev/null || true
+  fi
+  pkill -f "uvicorn app.main:app --port $PORT" 2>/dev/null || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT

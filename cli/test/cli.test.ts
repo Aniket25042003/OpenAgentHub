@@ -134,6 +134,25 @@ describe("agent CLI", () => {
     assert.ok(!l.stdout.includes("demo/hello"));
   });
 
+  it("status --json emits a system snapshot", () => {
+    const r = runCli(["status", "--json"], { env: env() });
+    assert.equal(r.code, 0, r.stderr);
+    const snap = JSON.parse(r.stdout);
+    assert.ok(snap.host.hostname);
+    assert.ok(Array.isArray(snap.agents));
+    assert.ok(Array.isArray(snap.containers));
+    assert.ok(Array.isArray(snap.openagenthub.installed));
+  });
+
+  it("ps --json lists containers or reports docker unavailable", () => {
+    const r = runCli(["ps", "--json"], { env: env() });
+    if (r.code === 0) {
+      assert.ok(Array.isArray(JSON.parse(r.stdout)));
+    } else {
+      assert.match(r.stderr, /docker is not available/);
+    }
+  });
+
   it("forwards piped stdin to the agent when no --input is given", () => {
     const dir = mkdtempSync(join(tmpdir(), "oah-stdin-"));
     writeFileSync(
