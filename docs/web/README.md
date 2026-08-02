@@ -1,7 +1,9 @@
 # Website — Next.js
 
-`web/` — the registry website. Next.js 15, App Router, TypeScript. Reads the
-registry API directly; it has no backend of its own.
+`web/` — the local **system dashboard** + registry website. Next.js 15, App
+Router, TypeScript. The homepage is a live dashboard of agents/containers on
+the machine (data via a local-only route handler); registry browsing/search
+lives at `/browse` and reads the registry API.
 
 ## Commands
 
@@ -16,25 +18,39 @@ npm run dev -w @openagenthub/web
 
 ```
 web/
-├── next.config.mjs        outputFileTracingRoot set to monorepo root
+├── next.config.mjs        outputFileTracingRoot set to monorepo root;
+│                          serverExternalPackages: @openagenthub/runtime, @openagenthub/sdk
 ├── package.json           next 15, react, typescript
 └── src/
     ├── lib/api.ts         registry API client + types (AgentSummary, AgentVersionDetail)
     ├── components/
-    │   └── install.tsx      copy-to-clipboard install command snippet
+    │   ├── install.tsx      copy-to-clipboard install command snippet
+    │   ├── site-nav.tsx     tabs: Dashboard (/), Browse (/browse)
+    │   └── dashboard.tsx    "use client": polls /api/system, renders host/agents/containers
     └── app/
-        ├── layout.tsx       root layout, metadata
-        ├── globals.css      design tokens + page styles
-        ├── page.tsx         home: hero + search + latest agents grid
-        ├── agent-card.tsx   grid card used on home
+        ├── layout.tsx       root layout, metadata, SiteNav in header
+        ├── globals.css      design tokens + nav/stats/table/section styles
+        ├── page.tsx         home: <Dashboard />
+        ├── api/system/route.ts   local-only snapshot endpoint (dynamic, calls systemSnapshot)
+        ├── browse/page.tsx  registry search + latest agents grid
+        ├── agent-card.tsx   grid card used on /browse
         └── agents/[namespace]/[name]/page.tsx   detail page
 ```
 
 ## Pages
 
-### Home (`/`)
+### Dashboard (`/`)
 
-- Hero + search input (routes to `/?q=...`, triggers `searchAgents`).
+- Host stats (OS, arch, CPU/memory, uptime, Docker server version).
+- Installed OpenAgentHub agents (name, version, sandbox).
+- Detected third-party agents (OpenClaw, Hermes, ...) matched by process/config/
+  port via the runtime catalog (`@openagenthub/runtime` `systemSnapshot`).
+- Docker containers, with `openagenthub/*` image flag.
+- Polls `GET /api/system` every 8s (client component).
+
+### Browse (`/browse`)
+
+- Search input (routes to `/?q=...`, triggers `searchAgents`).
 - Grid of agents via `agent-card.tsx` (name, description, downloads, version,
   security/trust status).
 
@@ -47,7 +63,7 @@ web/
 
 ## Data fetching
 
-`src/lib/api.ts`:
+`src/lib/api.ts` (registry — used by `/browse` and detail pages):
 
 ```ts
 searchAgents(q?): Promise<AgentSummary[]>      // GET /api/v1/agents?q=&sort=downloads
@@ -61,8 +77,16 @@ registryUrl(): string
 - Types mirror `sdk/src/registry.ts` + `registry/app/schemas.py`; keep them in
   sync.
 
+`src/app/api/system/route.ts` (dashboard — local only, no registry involved):
+
+- `export const dynamic = "force-dynamic"` (no caching of machine state).
+- Calls `systemSnapshot()` from `@openagenthub/runtime` and returns JSON.
+- `@openagenthub/runtime` + `@openagenthub/sdk` are listed in
+  `serverExternalPackages` so Next bundles them natively (no bundled copy).
+
 ## Conventions
 
 - `@/` path alias → `web/src` (`tsconfig.json`).
 - Plain CSS in `globals.css` (no Tailwind dependency).
-- Registry must be reachable at build/request time for pages to render.
+- Registry must be reachable at build/request time for `/browse` and detail
+  pages to render; the dashboard works without it.
