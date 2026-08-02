@@ -22,7 +22,7 @@ for execution.
 | `agent search [query]` | Search the registry |
 | `agent runtime` | Detect local runtimes/tooling |
 | `agent status` | System + agent diagnostics: host, docker, registry, installed agents, detected third-party agents (`--json`, `--all`) |
-| `agent ps` | List Docker containers (`--all` for every container, default OpenAgentHub's own) |
+| `agent ps` | List Docker containers (`--all` for every container, default OpenAgentHub's own sandbox containers) |
 
 Run `agent --help` / `agent <cmd> --help` for flags. See
 [commands.md](commands.md) for details.

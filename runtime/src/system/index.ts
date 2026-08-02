@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { arch, cpus, freemem, homedir, hostname, loadavg, platform, totalmem, uptime } from "node:os";
 import { join } from "node:path";
@@ -19,12 +19,23 @@ export interface DetectOptions {
   allContainers?: boolean;
 }
 
-export function dockerVersion(): string | undefined {
-  try {
-    return execFileSync("docker", ["version", "--format", "{{.Server.Version}}"], { encoding: "utf8", timeout: 10_000 }).trim() || undefined;
-  } catch {
-    return undefined;
+let cachedDocker: { version?: string; error?: string } | undefined;
+
+function dockerStatus(): { version?: string; error?: string } {
+  if (!cachedDocker) {
+    try {
+      const version =
+        execFileSync("docker", ["version", "--format", "{{.Server.Version}}"], { encoding: "utf8", timeout: 10_000 }).trim() || undefined;
+      cachedDocker = { version };
+    } catch (err) {
+      cachedDocker = { error: err instanceof Error ? err.message : String(err) };
+    }
   }
+  return cachedDocker;
+}
+
+export function dockerVersion(): string | undefined {
+  return dockerStatus().version;
 }
 
 export function listContainers(opts: { all?: boolean } = {}): ContainerInfo[] {
@@ -81,48 +92,46 @@ async function detectAgents(containers: ContainerInfo[], opts: DetectOptions): P
   const processes = psLines()
     .map(parsePsLine)
     .filter((p): p is { pid: number; command: string } => p !== null);
-  const out: DetectedAgent[] = [];
-  for (const spec of KNOWN_AGENTS) {
-    const via = new Set<string>();
-    const agentProcesses = processes.filter((p) => processMatches(spec, p.command));
-    if (agentProcesses.length > 0) via.add("process");
-    const matchedContainers = containers.filter((c) => containerMatches(spec, c));
-    if (matchedContainers.length > 0) via.add("container");
-    const configPaths = spec.configPaths.map((p) => join(home, p)).filter((p) => existsSync(p));
-    if (configPaths.length > 0) via.add("config");
-    if (spec.binaries.some((b) => which(b))) via.add("binary");
-    const listeningPorts: number[] = [];
-    for (const port of spec.ports) {
-      if (await portListening(port)) listeningPorts.push(port);
-    }
-    if (listeningPorts.length > 0) via.add("port");
+  return Promise.all(
+    KNOWN_AGENTS.map(async (spec) => {
+      const via = new Set<DetectionSource>();
+      const agentProcesses = processes.filter((p) => processMatches(spec, p.command));
+      if (agentProcesses.length > 0) via.add("process");
+      const matchedContainers = containers.filter((c) => containerMatches(spec, c));
+      if (matchedContainers.length > 0) via.add("container");
+      const configPaths = spec.configPaths.map((p) => join(home, p)).filter((p) => existsSync(p));
+      if (configPaths.length > 0) via.add("config");
+      if (spec.binaries.some((b) => which(b))) via.add("binary");
+      const portResults = await Promise.all(spec.ports.map(async (port) => ((await portListening(port)) ? port : undefined)));
+      const listeningPorts = portResults.filter((p): p is number => p !== undefined);
+      if (listeningPorts.length > 0) via.add("port");
 
-    const status: AgentStatus =
-      agentProcesses.length > 0 || matchedContainers.some((c) => c.state === "running") || listeningPorts.length > 0
-        ? "running"
-        : configPaths.length > 0 || matchedContainers.length > 0
-          ? "installed"
-          : "unknown";
+      const status: AgentStatus =
+        agentProcesses.length > 0 || matchedContainers.some((c) => c.state === "running") || listeningPorts.length > 0
+          ? "running"
+          : configPaths.length > 0 || matchedContainers.length > 0 || via.has("binary")
+            ? "installed"
+            : "unknown";
 
-    out.push({
-      id: spec.id,
-      displayName: spec.displayName,
-      description: spec.description,
-      homepage: spec.homepage,
-      status,
-      detectedVia: [...via] as DetectionSource[],
-      processes: agentProcesses,
-      containerNames: matchedContainers.map((c) => c.name),
-      configPaths,
-      listeningPorts,
-    });
-  }
-  return out;
+      return {
+        id: spec.id,
+        displayName: spec.displayName,
+        description: spec.description,
+        homepage: spec.homepage,
+        status,
+        detectedVia: [...via],
+        processes: agentProcesses,
+        containerNames: matchedContainers.map((c) => c.name),
+        configPaths,
+        listeningPorts,
+      };
+    }),
+  );
 }
 
 function hostInfo(): HostInfo {
   const rt = detectRuntime();
-  const dver = dockerVersion();
+  const d = dockerStatus();
   return {
     hostname: hostname(),
     platform: platform(),
@@ -134,7 +143,7 @@ function hostInfo(): HostInfo {
     memFreeBytes: freemem(),
     node: rt.node ?? "unknown",
     python: rt.python,
-    docker: { available: Boolean(dver), version: dver, error: dver ? undefined : "docker not available" },
+    docker: { available: Boolean(d.version), version: d.version, error: d.error },
   };
 }
 
@@ -151,7 +160,13 @@ function installedAgents(): OahInstalledAgent[] {
   }));
 }
 
+function runtimeVersion(): string {
+  const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+  return pkg.version;
+}
+
 export async function systemSnapshot(opts: DetectOptions = {}): Promise<SystemSnapshot> {
+  cachedDocker = undefined;
   const containers = listContainers({ all: opts.allContainers });
   const agents = await detectAgents(containers, opts);
   const annotated = containers.map((c) => {
@@ -168,7 +183,7 @@ export async function systemSnapshot(opts: DetectOptions = {}): Promise<SystemSn
     generatedAt: new Date().toISOString(),
     host: hostInfo(),
     openagenthub: {
-      version: "0.1.0",
+      version: runtimeVersion(),
       agentsDir: AGENTS_DIR,
       registryUrl: config.registryUrl ?? REGISTRY_DEFAULT,
       installed: installedAgents(),

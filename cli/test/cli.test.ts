@@ -144,6 +144,15 @@ describe("agent CLI", () => {
     assert.ok(Array.isArray(snap.openagenthub.installed));
   });
 
+  it("ps --json lists containers or reports docker unavailable", () => {
+    const r = runCli(["ps", "--json"], { env: env() });
+    if (r.code === 0) {
+      assert.ok(Array.isArray(JSON.parse(r.stdout)));
+    } else {
+      assert.match(r.stderr, /docker is not available/);
+    }
+  });
+
   it("forwards piped stdin to the agent when no --input is given", () => {
     const dir = mkdtempSync(join(tmpdir(), "oah-stdin-"));
     writeFileSync(

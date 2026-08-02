@@ -32,8 +32,8 @@ assert_contains() { [[ "$1" == *"$2"* ]] || fail "expected to contain '$2' in: $
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]]; then
     kill "$SERVER_PID" 2>/dev/null || true
-    pkill -f "uvicorn app.main:app --port $PORT" 2>/dev/null || true
   fi
+  pkill -f "uvicorn app.main:app --port $PORT" 2>/dev/null || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT

@@ -115,8 +115,9 @@ Per-command behavior. Flags shown are the ones that matter; run
 
 ## `agent ps`
 
-- Lists Docker containers. By default only OpenAgentHub's own (`openagenthub/*`
-  image); `--all` shows every container with a `docker ps`-style command.
+- Lists Docker containers. By default only OpenAgentHub's own sandbox containers
+  (identified by their `oah-deps-*` dependency volume); `--all` shows every
+  container on the machine with a `docker ps`-style command.
 - Flags: `--json`.
 
 ## Error convention

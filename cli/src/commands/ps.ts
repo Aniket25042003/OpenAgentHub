@@ -1,12 +1,12 @@
 import { Command, Flags } from "@oclif/core";
-import { dockerVersion, listContainers } from "@openagenthub/runtime";
+import { dockerVersion, isOahContainer, listContainers } from "@openagenthub/runtime";
 import { printTable } from "../lib/print.js";
 
 export default class Ps extends Command {
-  static description = "List Docker containers running on this machine";
+  static description = "List OpenAgentHub sandbox containers (--all for every container on the machine)";
 
   static flags = {
-    all: Flags.boolean({ char: "a", description: "include stopped containers" }),
+    all: Flags.boolean({ char: "a", description: "list every container (running and stopped)" }),
     json: Flags.boolean({ description: "output machine-readable JSON" }),
   };
 
@@ -15,13 +15,14 @@ export default class Ps extends Command {
     if (!dockerVersion()) {
       this.error("docker is not available", { exit: 1 });
     }
-    const containers = listContainers({ all: flags.all });
+    const all = listContainers({ all: flags.all });
+    const containers = flags.all ? all : all.filter(isOahContainer);
     if (flags.json) {
       this.logJson(containers);
       return;
     }
     if (containers.length === 0) {
-      this.log(flags.all ? "no containers (running or stopped)" : "no running containers");
+      this.log(flags.all ? "no containers (running or stopped)" : "no OpenAgentHub containers running");
       return;
     }
     printTable(
