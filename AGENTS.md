@@ -70,6 +70,13 @@ npm run build -w @openagenthub/web
 cd web && npx next start -p 3100   # or: npm run dev -w @openagenthub/web
 ```
 
+## GitHub workflow
+
+- Whenever asked to **merge or close a PR** (or review/comment on commits), always
+  leave a **detailed comment** on the PR via GitHub's comment option explaining
+  what was done and **why** — e.g. what was merged/closed, the review findings
+  addressed, and the reasoning for the decision.
+
 ## Core invariants & decisions (keep these when changing code)
 
 1. **The manifest is the contract.** `specs/agent.schema.json` is the single
