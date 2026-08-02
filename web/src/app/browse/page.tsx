@@ -23,7 +23,8 @@ export default async function BrowsePage({ searchParams }: PageProps) {
   return (
     <main>
       <div className="hero">
-        <h1>Registry browser</h1>
+        <span className="eyebrow">Registry</span>
+        <h1>Browse agents</h1>
         <p>
           Agents published to the registry. Install with{" "}
           <code className="inline">agent install namespace/name</code>, signed and sandboxed by default.

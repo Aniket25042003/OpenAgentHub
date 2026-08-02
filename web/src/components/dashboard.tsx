@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { DetectedAgent, HostInfo, SystemSnapshot } from "@openagenthub/runtime";
+import { Reveal } from "@/components/reveal";
 
 const POLL_MS = 8000;
 
@@ -30,22 +31,40 @@ export function Dashboard() {
 
   return (
     <main>
-      <div className="row" style={{ marginBottom: 20, justifyContent: "space-between" }}>
-        <div>
-          <h1 style={{ margin: 0 }}>System dashboard</h1>
-          <p className="muted" style={{ margin: 0 }}>
-            {updated ? `updated ${updated.toLocaleTimeString()}` : "loading…"}
-          </p>
+      <div className="dash-hero">
+        <div className="hero-glow" />
+        <span className="eyebrow clear">Live system check</span>
+        <h1>
+          System <span className="hl">dashboard</span>
+        </h1>
+        <p className="lead">
+          Everything OpenAgentHub sees on this machine — installed agents, detected third-party agents,
+          running containers, and host health. Polled every {POLL_MS / 1000}s from{" "}
+          <code className="inline">/api/system</code>.
+        </p>
+        <div className="row" style={{ marginTop: 16 }}>
+          <span className="pill good">
+            <span className="dot" />
+            {updated ? `updated ${updated.toLocaleTimeString()}` : "collecting snapshot…"}
+          </span>
+          {error && <span className="pill bad">{error}</span>}
         </div>
-        {error && <span className="pill bad">{error}</span>}
       </div>
 
       {snap ? (
         <>
-          <HostCards host={snap.host} />
-          <InstalledAgents snap={snap} />
-          <DetectedAgents agents={snap.agents} />
-          <Containers snap={snap} />
+          <Reveal>
+            <HostCards host={snap.host} />
+          </Reveal>
+          <Reveal delay={80}>
+            <InstalledAgents snap={snap} />
+          </Reveal>
+          <Reveal delay={160}>
+            <DetectedAgents agents={snap.agents} />
+          </Reveal>
+          <Reveal delay={240}>
+            <Containers snap={snap} />
+          </Reveal>
         </>
       ) : (
         <div className="not-found">collecting system snapshot…</div>
@@ -73,7 +92,7 @@ function Stat({ label, value, sub, good }: { label: string; value: string; sub?:
   return (
     <div className="stat">
       <div className="label">{label}</div>
-      <div className="num" style={{ color: good === undefined ? undefined : good ? "var(--good)" : "var(--bad)" }}>
+      <div className="num" style={{ color: good === undefined ? undefined : good ? "var(--clear-strong)" : "#e08a6a" }}>
         {value}
       </div>
       {sub && <div className="sub">{sub}</div>}
@@ -89,7 +108,9 @@ function InstalledAgents({ snap }: { snap: SystemSnapshot }) {
         OpenAgentHub agents <span className="badge">{installed.length}</span>
       </h2>
       {installed.length === 0 ? (
-        <p className="muted">No agents installed via OpenAgentHub. Try <code className="inline">agent install &lt;namespace&gt;/&lt;name&gt;</code>.</p>
+        <p className="hint">
+          No agents installed via OpenAgentHub. Try <code className="inline">agent install &lt;namespace&gt;/&lt;name&gt;</code>.
+        </p>
       ) : (
         <div className="table-wrap">
           <table>
@@ -132,14 +153,17 @@ function DetectedAgents({ agents }: { agents: DetectedAgent[] }) {
         Detected agents <span className="badge">{detected.length}</span>
       </h2>
       {detected.length === 0 ? (
-        <p className="muted">No known third-party agents (OpenClaw, Hermes, …) detected on this machine.</p>
+        <p className="hint">No known third-party agents (OpenClaw, Hermes, …) detected on this machine.</p>
       ) : (
         <div className="grid">
           {detected.map((a) => (
             <div className="card" key={a.id}>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <h3>{a.displayName}</h3>
-                <span className={`pill ${a.status === "running" ? "good" : "warn"}`}>{a.status}</span>
+                <span className={`pill ${a.status === "running" ? "good" : "warn"}`}>
+                  <span className={`dot ${a.status === "running" ? "" : "warn"}`} />
+                  {a.status}
+                </span>
               </div>
               <p className="desc">{a.description}</p>
               <div className="row">
@@ -176,7 +200,7 @@ function Containers({ snap }: { snap: SystemSnapshot }) {
         Containers <span className="badge">{containers.length}</span>
       </h2>
       {containers.length === 0 ? (
-        <p className="muted">No running containers detected.</p>
+        <p className="hint">No running containers detected.</p>
       ) : (
         <div className="table-wrap">
           <table>

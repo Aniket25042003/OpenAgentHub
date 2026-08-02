@@ -10,7 +10,7 @@ const TABS = [
 export function SiteNav() {
   const path = usePathname();
   return (
-    <nav className="nav">
+    <nav className="nav-links">
       {TABS.map((t) => (
         <a key={t.href} href={t.href} className={path === t.href ? "active" : ""}>
           {t.label}
