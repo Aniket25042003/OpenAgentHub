@@ -1,9 +1,10 @@
 # --- Node / TypeScript workspaces (sdk, runtime, cli, web) ---
 node_modules/
 dist/
-web/.next/
+.next/
 out/
 *.tsbuildinfo
+next-env.d.ts
 npm-debug.log*
 *.tgz
 
