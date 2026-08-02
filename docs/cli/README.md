@@ -21,6 +21,8 @@ for execution.
 | `agent env ns/name` | Manage encrypted vault secrets |
 | `agent search [query]` | Search the registry |
 | `agent runtime` | Detect local runtimes/tooling |
+| `agent status` | System + agent diagnostics: host, docker, registry, installed agents, detected third-party agents (`--json`, `--all`) |
+| `agent ps` | List Docker containers (`--all` for every container, default OpenAgentHub's own) |
 
 Run `agent --help` / `agent <cmd> --help` for flags. See
 [commands.md](commands.md) for details.
@@ -32,7 +34,7 @@ cli/src/
 ├── commands/            one file per command (oclif convention)
 │   ├── init.ts, validate.ts, login.ts, publish.ts, install.ts,
 │   ├── update.ts, list.ts, uninstall.ts, run.ts, verify.ts,
-│   └── env.ts, search.ts, runtime.ts
+│   └── env.ts, search.ts, runtime.ts, status.ts, ps.ts
 └── lib/
     ├── installer.ts     install/uninstall logic (resolve, verify, unpack, record)
     ├── print.ts         table printer
@@ -56,5 +58,5 @@ cli/src/
 
 ## Tests
 
-`node --test "test/*.test.ts"` from `cli/` (quoted glob). 9 tests, including
+`node --test "test/*.test.ts"` from `cli/` (quoted glob). 10 tests, including
 the stdin-piping regression test. Tests run against a temp `AGENT_HOME`.
