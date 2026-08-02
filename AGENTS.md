@@ -36,7 +36,8 @@ sdk/         @openagenthub/sdk — TS: manifest validation, crypto, pack/unpack,
 runtime/     @openagenthub/runtime — TS: config/secrets vault/model selection/permissions/sandboxes/AgentRuntime
 cli/         @openagenthub/cli — oclif CLI, bin `agent` (init, validate, publish, install, run, ...)
 registry/    Python FastAPI backend: search/publish/auth/scan + archive storage
-web/         Next.js 15 (App Router) registry website, points at the registry API
+web/         Next.js 15 (App Router) system dashboard + registry browse (ships with the package)
+marketing/   Standalone static landing site (Next.js `output: "export"`): product + install docs
 examples/    Reference agents: github-pr-reviewer, meeting-notes (MCP), echo-server
 test/        e2e.sh — full-stack smoke test (ephemeral registry + CLI)
 docs/        Human + agent reference: architecture decisions, per-component deep dives

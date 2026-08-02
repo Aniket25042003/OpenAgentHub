@@ -18,6 +18,7 @@ overview, then drill into the component that interests you.
 | CLI (`agent` command) | [cli/README.md](cli/README.md) |
 | Registry backend (FastAPI) | [registry/README.md](registry/README.md) |
 | Website (Next.js) | [web/README.md](web/README.md) |
+| Marketing site | [marketing/README.md](../marketing/README.md) |
 | Reference agents | [examples/README.md](examples/README.md) |
 | Architectural decision records | [decisions/](decisions/) |
 
