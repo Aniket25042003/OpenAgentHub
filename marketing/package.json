@@ -1,0 +1,23 @@
+{
+  "name": "@openagenthub/marketing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAgentHub marketing & landing website",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "preview": "python3 -m http.server 4000 -d out"
+  },
+  "dependencies": {
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}
