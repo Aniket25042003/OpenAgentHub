@@ -43,8 +43,8 @@ export function Dashboard() {
           <code className="inline">/api/system</code>.
         </p>
         <div className="row" style={{ marginTop: 16 }}>
-          <span className="pill good">
-            <span className="dot" />
+          <span className={`pill ${error ? "bad" : "good"}`}>
+            <span className={`dot ${error ? "warn" : ""}`} />
             {updated ? `updated ${updated.toLocaleTimeString()}` : "collecting snapshot…"}
           </span>
           {error && <span className="pill bad">{error}</span>}

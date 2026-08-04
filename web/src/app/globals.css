@@ -55,7 +55,7 @@
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  text-rendering: optimizelegibility;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -686,14 +686,14 @@ tbody tr:hover td { background: rgba(242, 163, 61, 0.05); }
   border-radius: 50%;
   background: var(--clear);
   flex-shrink: 0;
-  animation: pulseDot 2.2s ease-in-out infinite;
+  animation: pulse-dot 2.2s ease-in-out infinite;
 }
 
 .dot.warn {
   background: var(--signal);
 }
 
-@keyframes pulseDot {
+@keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
@@ -702,10 +702,10 @@ tbody tr:hover td { background: rgba(242, 163, 61, 0.05); }
 
 .fade-up {
   opacity: 0;
-  animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fade-up-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes fadeUp {
+@keyframes fade-up-in {
   to {
     opacity: 1;
     transform: none;

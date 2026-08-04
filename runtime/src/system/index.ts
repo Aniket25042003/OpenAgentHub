@@ -162,7 +162,7 @@ function installedAgents(): OahInstalledAgent[] {
 
 function runtimeVersion(): string {
   try {
-    const pkgUrl = String(new URL("../../package.json", import.meta.url));
+    const pkgUrl = new URL("../../package.json", import.meta.url);
     const pkg = JSON.parse(readFileSync(pkgUrl, "utf8")) as { version: string };
     return pkg.version;
   } catch {

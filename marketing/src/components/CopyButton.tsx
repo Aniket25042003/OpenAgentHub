@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
 
   async function copy() {
+    let ok = false;
     try {
       await navigator.clipboard.writeText(text);
+      ok = true;
     } catch {
       const ta = document.createElement("textarea");
       ta.value = text;
@@ -16,14 +25,16 @@ export default function CopyButton({ text }: { text: string }) {
       document.body.appendChild(ta);
       ta.select();
       try {
-        document.execCommand("copy");
+        ok = document.execCommand("copy");
       } catch {
-        /* no-op */
+        ok = false;
       }
       document.body.removeChild(ta);
     }
+    if (!ok) return;
+    if (timer.current) clearTimeout(timer.current);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    timer.current = setTimeout(() => setCopied(false), 1600);
   }
 
   return (
