@@ -10,7 +10,7 @@
     "preview": "python3 -m http.server 4000 -d out"
   },
   "dependencies": {
-    "next": "^15.1.0",
+    "next": "^15.5.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

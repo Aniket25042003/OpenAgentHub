@@ -46,6 +46,7 @@ export default async function AgentPage({ params }: PageProps) {
       <p className="muted" style={{ marginBottom: 4 }}>
         <a href="/browse">← browse</a>
       </p>
+      <span className="eyebrow clear">Agent manifest</span>
       <div className="row" style={{ marginBottom: 4 }}>
         <h1 style={{ margin: 0 }}>
           {agent.namespace}/{agent.name}

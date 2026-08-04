@@ -161,8 +161,13 @@ function installedAgents(): OahInstalledAgent[] {
 }
 
 function runtimeVersion(): string {
-  const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
-  return pkg.version;
+  try {
+    const pkgUrl = new URL("../../package.json", import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgUrl, "utf8")) as { version: string };
+    return pkg.version;
+  } catch {
+    return "0.1.0";
+  }
 }
 
 export async function systemSnapshot(opts: DetectOptions = {}): Promise<SystemSnapshot> {
