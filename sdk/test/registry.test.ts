@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { RegistryClient } from "../dist/registry.js";
+import { RegistryClient, DeviceAuthPendingError } from "../dist/registry.js";
 
 function startServer(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): Promise<{ url: string; close: () => void }> {
   return new Promise((resolve) => {
@@ -67,6 +67,117 @@ describe("RegistryClient.catalog", () => {
       assert.equal(page.items[0].name, "hello");
       assert.equal(page.items[0].signerVerified, true);
       assert.equal(page.nextCursor, "abc123");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("starts a device login and returns the user code", async () => {
+    let body = "";
+    const server = await startServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        body = raw;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            deviceCode: "dev-123",
+            userCode: "ABCDEF",
+            verificationUri: "http://localhost:8000/device?user_code=ABCDEF",
+            expiresIn: 1800,
+            interval: 5,
+          }),
+        );
+      });
+    });
+    try {
+      const client = new RegistryClient(server.url);
+      const start = await client.startDeviceLogin("cli");
+      assert.equal(start.deviceCode, "dev-123");
+      assert.equal(start.userCode, "ABCDEF");
+      assert.equal(start.verificationUri.includes("ABCDEF"), true);
+      assert.ok(body.includes('"clientName"'), body);
+      assert.ok(body.includes("cli"), body);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("polls a pending device token and surfaces DeviceAuthPendingError", async () => {
+    const server = await startServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.statusCode = 400;
+      res.end(JSON.stringify({ detail: "authorization_pending" }));
+    });
+    try {
+      const client = new RegistryClient(server.url);
+      await assert.rejects(() => client.pollDeviceToken("dev-123"), (err: unknown) => {
+        assert.ok(err instanceof DeviceAuthPendingError, `expected pending error, got ${err}`);
+        return true;
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("resolves a completed device login to a credential", async () => {
+    const server = await startServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.statusCode = 200;
+      res.end(JSON.stringify({ accessToken: "sess-token", username: "octocat", tokenType: "bearer" }));
+    });
+    try {
+      const result = await new RegistryClient(server.url).pollDeviceToken("dev-123");
+      assert.equal(result.accessToken, "sess-token");
+      assert.equal(result.username, "octocat");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("lists and revokes sessions", async () => {
+    const calls: string[] = [];
+    const server = await startServer((req, res) => {
+      calls.push(`${req.method} ${req.url}`);
+      res.setHeader("content-type", "application/json");
+      res.statusCode = 200;
+      res.end(
+        JSON.stringify({
+          sessions: [{ id: 7, audience: "cli", deviceLabel: "mac", createdAt: "x", lastUsedAt: "x", expiresAt: "x", revoked: false }],
+        }),
+      );
+    });
+    try {
+      const client = new RegistryClient(server.url, "tok");
+      const sessions = await client.mySessions();
+      assert.equal(sessions.length, 1);
+      assert.equal(sessions[0].id, 7);
+      await client.revokeSession(7);
+      await client.logoutMe();
+      assert.ok(calls.some((c) => c.startsWith("DELETE /api/v1/sessions/7")), calls.join("\n"));
+      assert.ok(calls.some((c) => c.startsWith("DELETE /api/v1/sessions/me")), calls.join("\n"));
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reads and accepts agreements", async () => {
+    const server = await startServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.statusCode = 200;
+      const body =
+        req.method === "POST"
+          ? { tos: "accepted", privacy: "accepted", publisher: "accepted" }
+          : { tos: "pending", privacy: "pending", publisher: "pending" };
+      res.end(JSON.stringify(body));
+    });
+    try {
+      const client = new RegistryClient(server.url, "tok");
+      const before = await client.myAgreements();
+      assert.equal(before.tos, "pending");
+      const after = await client.acceptAgreements(true, true, true);
+      assert.equal(after.publisher, "accepted");
     } finally {
       await server.close();
     }

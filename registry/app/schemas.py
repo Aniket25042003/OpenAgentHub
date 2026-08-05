@@ -168,6 +168,61 @@ class GithubExchangeResponse(BaseModel):
     username: str
 
 
+class DeviceLoginRequest(BaseModel):
+    clientName: str = "cli"
+    requestedScopes: str = "cli"
+    registryOrigin: str | None = None
+    mode: str = "poll"
+
+
+class DeviceLoginResponse(BaseModel):
+    deviceCode: str
+    userCode: str
+    verificationUri: str
+    expiresIn: int
+    interval: int
+
+
+class DevicePollRequest(BaseModel):
+    deviceCode: str
+
+
+class DevicePollResponse(BaseModel):
+    accessToken: str
+    username: str
+    tokenType: str = "bearer"
+
+
+class AgreementsRequest(BaseModel):
+    tos: bool = False
+    privacy: bool = False
+    publisher: bool = False
+
+
+class SessionInfo(BaseModel):
+    id: int
+    audience: str
+    deviceLabel: str | None = None
+    createdAt: str
+    lastUsedAt: str
+    expiresAt: str
+    revoked: bool = False
+
+
+class SessionsResponse(BaseModel):
+    sessions: list[SessionInfo]
+
+
+class AuthMeResponse(BaseModel):
+    username: str
+    role: str = "publisher"
+    status: str = "active"
+    githubId: str | None = None
+    avatarUrl: str | None = None
+    agreements: dict[str, str]
+    sessions: list[SessionInfo]
+
+
 class NamespaceClaimRequest(BaseModel):
     name: str
 

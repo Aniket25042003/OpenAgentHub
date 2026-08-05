@@ -200,7 +200,7 @@ async def get_version(namespace: str, name: str, version: str, request: Request,
 @router.get("/agents/{namespace}/{name}/versions/{version}/archive")
 async def download_archive(namespace: str, name: str, version: str, request: Request, session: AsyncSession = Depends(get_session)):
     settings = get_settings()
-    enforce(request, ip_rule=RateLimitRule(settings.downloads_per_minute_by_ip, 60))
+    enforce(request, ip_rule=RateLimitRule(settings.downloads_per_minute_by_ip, 60), bucket="dl")
     try:
         data, version_id = await application.download_archive(session, namespace, name, version)
     except AgentNotFound as exc:

@@ -40,8 +40,9 @@ Architecture alignment:
 
 ### M-7.1 Shared identity and OAuth foundation
 
-1. Keep GitHub `github_id` as the stable external identity key rather than using a
-   mutable GitHub username.
+> **STATUS: DONE** — merged as part of `feat/shared-web-auth` (M-7.1+M-7.2).
+
+1. Keep GitHub `github_id` as the stable external identity key rather than using a mutable GitHub username.
 2. Add a hosted `Sign in with GitHub` flow using:
    - OAuth `state` validation;
    - PKCE where supported by the selected GitHub flow;
@@ -72,7 +73,20 @@ Architecture alignment:
 10. Add explicit Terms of Service, privacy-policy acceptance version, and publisher
     agreement timestamps before first publish.
 
+> **Implementation notes for M-7.1 (applies to M-7.1 only):** the plan's flow for
+> "hosted web sign-in" is implemented in `registry/app/identity/oauth.py` (start +
+> callback endpoints on `auth_router`), using HMAC-signed state tokens, a strict
+> redirect allowlist (`settings.web_redirect_uris`), short code/state TTLs, and
+> backend-only code exchange. Opaque server-side sessions live in
+> `registry/app/identity/sessions.py` with bounded idle/absolute TTLs, rotation on
+> use (for web sessions), revocation, and device/audience metadata. CLI credentials
+> are stored in the machine-bound encrypted vault (not `config.json`). A TLS
+> termination proxy (e.g. cloudflare/caddy) is expected in production; the built-in
+> dev/test host uses HTTP-only cookies except when the request is already HTTPS.
+
 ### M-7.2 CLI browser/device authorization
+
+> **STATUS: DONE** — merged as part of `feat/shared-web-auth` (M-7.1+M-7.2).
 
 1. Replace the normal `openagenthub login --token` experience with
    `openagenthub login`.
@@ -101,6 +115,18 @@ Architecture alignment:
    forwarding to another registry URL.
 10. Add tests for expired transactions, replay, wrong registry, denied consent,
     browser cancellation, polling abuse, and local callback port collision.
+
+> **Not done for M-7.2 batch:** polling-abuse rate-limit test, local-callback
+> port-collision test, and browser-cancellation/denied-consent UI states are
+> deferred (CLI uses fixed-interval polling; the registry rejects
+> expired/replayed `expired_token` transactions and returns `authorization_pending`
+> until approval). PKCE is not needed because the GitHub OAuth exchange is
+> backend-only.
+>
+> **Cross-cutting fix included in this batch:** the download rate limiter now has
+> its own bucket (`bucket="dl"`). Previously downloads (8/min/IP) and anonymous
+> reads (300/min/IP) shared the same sliding-window key, so one busy reader could
+> exhaust the download budget and 429 legitimate installs.
 
 ### M-7.3 Publisher console
 

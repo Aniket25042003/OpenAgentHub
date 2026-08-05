@@ -311,4 +311,43 @@ describe("agent CLI", () => {
     assert.equal(after.code, 0, after.stderr);
     assert.deepEqual(JSON.parse(after.stdout), []);
   });
+
+  it("whoami reports not signed in and auth guides to login", () => {
+    const who = runCli(["whoami"], { env: env() });
+    assert.equal(who.code, 0, who.stderr);
+    assert.match(who.stdout, /not signed in/);
+
+    const auth = runCli(["auth"], { env: env() });
+    assert.equal(auth.code, 0, auth.stderr);
+    assert.match(auth.stdout, /not signed in/);
+
+    const sessions = runCli(["auth", "sessions"], { env: env() });
+    assert.equal(sessions.code, 1);
+  });
+
+  it("login --token stores credential in vault (not plaintext config) and whoami reads it", () => {
+    const cfgBefore = readFileSync(join(home, "config.json"), "utf8");
+    assert.ok(!cfgBefore.includes("gh-secret-token"));
+
+    const r = runCli(["login", "--token", "gh-secret-token", "--registry", "http://127.0.0.1:1"], { env: env() });
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+
+    const cfgAfter = readFileSync(join(home, "config.json"), "utf8");
+    assert.ok(!cfgAfter.includes("gh-secret-token"), "token must not land in config.json");
+
+    const secretsDir = join(home, "secrets");
+    assert.ok(existsSync(secretsDir));
+    const entries = readdirSync(secretsDir);
+    assert.ok(entries.some((f) => f.endsWith(".json")), "credential blob exists in vault");
+    const blob = readFileSync(join(secretsDir, entries.find((f) => f.endsWith(".json"))!), "utf8");
+    assert.ok(!blob.includes("gh-secret-token") && !blob.includes("registry"), "credential blob must be encrypted");
+  });
+
+  it("logout removes the registered CLI credential from the vault", () => {
+    runCli(["login", "--token", "gh-secret-token", "--registry", "http://127.0.0.1:1"], { env: env() });
+    const out = runCli(["logout", "--registry", "http://127.0.0.1:1"], { env: env() });
+    assert.equal(out.code, 0, out.stderr);
+    const who = runCli(["whoami", "--registry", "http://127.0.0.1:1"], { env: env() });
+    assert.match(who.stdout, /not signed in/);
+  });
 });

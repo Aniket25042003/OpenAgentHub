@@ -16,6 +16,7 @@ import {
   installedAgentDir,
 } from "@openagenthub/runtime";
 import { checkRevocationBeforeRun, installedIsFresh } from "./revocation.js";
+import { resolveToken } from "./credentials.js";
 import { parseSpec } from "./installer.js";
 import { installedMatches, resolveInstalledOrThrow } from "./resolve.js";
 
@@ -72,7 +73,7 @@ export async function prepareRunContext(spec: string | ParsedSpec, opts: Prepare
     agentKey,
     installed,
     config.registryUrl ?? "https://registry.openagenthub.dev",
-    config.token,
+    resolveToken(config.registryUrl ?? "https://registry.openagenthub.dev"),
   );
   if (revCheck.blocked) {
     throw new Error(`blocked: ${revCheck.blocked}`);

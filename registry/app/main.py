@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.config import get_settings
 from app.db import dispose_db, init_db, ping_db
+from app.identity.routes import auth_router as identity_auth_router
 from app.identity.routes import router as identity_router
 from app.outbox.dispatcher import OutboxDispatcher
 from app.ratelimit import RateLimitExceeded
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(identity_router)
+    app.include_router(identity_auth_router)
     app.include_router(registry_router)
 
     @app.exception_handler(RateLimitExceeded)

@@ -2,6 +2,7 @@ import { Command, Flags, Args } from "@oclif/core";
 import { RegistryClient } from "@openagenthub/sdk";
 import { loadConfig, REGISTRY_DEFAULT } from "@openagenthub/runtime";
 import { installAgent } from "../lib/installer.js";
+import { resolveRegistryUrl, resolveToken } from "../lib/credentials.js";
 
 export default class Update extends Command {
   static description = "Update an installed agent to the latest published version";
@@ -16,8 +17,8 @@ export default class Update extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Update);
     const config = loadConfig();
-    const registryUrl = flags.registry ?? config.registryUrl ?? REGISTRY_DEFAULT;
-    const client = new RegistryClient(registryUrl, config.token);
+    const registryUrl = resolveRegistryUrl(flags.registry);
+    const client = new RegistryClient(registryUrl, resolveToken(registryUrl));
 
     try {
       const [ns, name] = args.spec.split("/");
