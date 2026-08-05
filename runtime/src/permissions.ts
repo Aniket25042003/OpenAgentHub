@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Permission } from "@openagenthub/sdk";
+import type { Manifest, Permission } from "@openagenthub/sdk";
 import { CONFIG_PATH } from "./config.js";
 
 export type GrantedPermissions = Record<string, boolean>;
@@ -10,6 +10,14 @@ export interface OpenAgentHubConfig {
   token?: string;
   installed?: Record<string, InstalledAgent>;
   permissions?: Record<string, GrantedPermissions>;
+  secretGrants?: Record<string, string[]>;
+  sandboxOverrides?: Record<string, SandboxOverrideEntry>;
+}
+
+export interface SandboxOverrideEntry {
+  sandbox: "container" | "process";
+  digest: string;
+  setAt: string;
 }
 
 export interface InstalledAgent {
@@ -21,6 +29,9 @@ export interface InstalledAgent {
   installedAt: string;
   source: string;
   signatureKeyId?: string;
+  reviewStatus?: string;
+  statusCheckedAt?: string;
+  archiveDigest?: string;
 }
 
 export function loadConfig(): OpenAgentHubConfig {
@@ -34,7 +45,9 @@ export function loadConfig(): OpenAgentHubConfig {
 
 export function saveConfig(config: OpenAgentHubConfig): void {
   mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 });
+  const tmp = `${CONFIG_PATH}.tmp-${process.pid}`;
+  writeFileSync(tmp, JSON.stringify(config, null, 2), { mode: 0o600 });
+  renameSync(tmp, CONFIG_PATH);
 }
 
 export function recordInstall(config: OpenAgentHubConfig, agent: InstalledAgent): void {
@@ -59,6 +72,48 @@ export function requestedPermissions(manifest: { permissions?: Permission[] }): 
   return perms;
 }
 
+export function effectivePermissions(manifest: { permissions?: Permission[] }, saved: GrantedPermissions): Permission[] {
+  const requested = requestedPermissions(manifest);
+  if (requested.length === 1 && requested[0] === "none") return [];
+  const allowed = new Set(requested);
+  return Object.entries(saved)
+    .filter(([k, v]) => v === true && allowed.has(k as Permission))
+    .map(([k]) => k as Permission);
+}
+
+export function unsupportedSavedGrants(manifest: { permissions?: Permission[] }, saved: GrantedPermissions): string[] {
+  const requested = new Set(requestedPermissions(manifest));
+  return Object.keys(saved).filter((k) => !requested.has(k as Permission));
+}
+
 export function networkGranted(perms: GrantedPermissions): boolean {
   return perms.network === true;
+}
+
+export function grantedSecretNames(agentKey: string, config: OpenAgentHubConfig): Set<string> {
+  return new Set(config.secretGrants?.[agentKey] ?? []);
+}
+
+export function saveSecretGrant(config: OpenAgentHubConfig, agentKey: string, secret: string): void {
+  config.secretGrants = config.secretGrants ?? {};
+  const grants = config.secretGrants[agentKey] ?? (config.secretGrants[agentKey] = []);
+  if (!grants.includes(secret)) grants.push(secret);
+  saveConfig(config);
+}
+
+export function sandboxOverride(config: OpenAgentHubConfig, agentKey: string): SandboxOverrideEntry | undefined {
+  return config.sandboxOverrides?.[agentKey];
+}
+
+export function setSandboxOverride(config: OpenAgentHubConfig, agentKey: string, sandbox: "container" | "process", digest: string): void {
+  config.sandboxOverrides = config.sandboxOverrides ?? {};
+  config.sandboxOverrides[agentKey] = { sandbox, digest, setAt: new Date().toISOString() };
+  saveConfig(config);
+}
+
+export function clearSandboxOverride(config: OpenAgentHubConfig, agentKey: string): boolean {
+  if (!config.sandboxOverrides?.[agentKey]) return false;
+  delete config.sandboxOverrides[agentKey];
+  saveConfig(config);
+  return true;
 }

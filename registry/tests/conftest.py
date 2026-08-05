@@ -10,6 +10,7 @@ _TEST_DB = os.path.join(tempfile.mkdtemp(prefix="oah-reg-test-"), "test.db")
 os.environ.setdefault("REGISTRY_DATABASE_URL", f"sqlite+aiosqlite:///{_TEST_DB}")
 os.environ.setdefault("REGISTRY_STORAGE_DIR", tempfile.mkdtemp(prefix="oah-reg-storage-"))
 os.environ.setdefault("REGISTRY_JWT_SECRET", "test-secret-0123456789abcdef0123456789abcdef")
+os.environ.setdefault("REGISTRY_RESCAN_COOLDOWN_SECONDS", "0")
 
 from app.main import create_app  # noqa: E402
 

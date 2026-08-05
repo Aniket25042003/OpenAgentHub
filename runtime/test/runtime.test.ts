@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime, SecretsVault, ContainerSandbox, ProcessSandbox } from "../dist/index.js";
@@ -16,6 +16,7 @@ function manifest(overrides: Partial<Manifest> = {}): Manifest {
     license: "MIT",
     runtime: { language: "python" },
     models: { supported: ["local"] },
+    permissions: ["filesystem"],
     interfaces: { cli: { command: "python app.py", input: "json", output: "json" } },
     ...overrides,
   } as Manifest;
@@ -152,15 +153,86 @@ describe("container sandbox security flags", () => {
     assert.ok(args.includes("/tmp/agent:/app:ro"));
   });
 
-  it("does not leak secrets into the command line for env-flagged values", () => {
-    const args = new ContainerSandbox(spec).buildRunArgs("python app.py");
+  it("labels containers with package identity metadata", () => {
+    const spec2 = { ...spec, runId: "run-123", packageDigest: "deadbeef" };
+    const args = new ContainerSandbox(spec2).buildRunArgs("x");
     const joined = args.join(" ");
-    assert.ok(joined.includes("AGENT_API_KEY=super-secret"));
+    assert.ok(joined.includes("oah.package=test/echo"));
+    assert.ok(joined.includes("oah.run_id=run-123"));
+    assert.ok(joined.includes("oah.digest=deadbeef"));
+    assert.ok(joined.includes("oah.manager=openagenthub-runtime"));
+  });
+
+  it("writes flagged env values to a private env-file instead of the command line", () => {
+    const sb = new ContainerSandbox(spec);
+    const envFile = sb.writeEnvFile();
+    assert.ok(envFile);
+    const contents = readFileSync(envFile, "utf8");
+    assert.match(contents, /AGENT_API_KEY=super-secret/);
+    const args = sb.buildRunArgs("python app.py", envFile);
+    const joined = args.join(" ");
+    assert.ok(joined.includes(`--env-file`));
+    assert.ok(!joined.includes("super-secret"));
+    sb.removeEnvFile(envFile);
   });
 
   it("enforces read-only root when filesystem not granted", () => {
     const noFs = { ...spec, granted: [] as Permission[], network: false };
     const args = new ContainerSandbox(noFs).buildRunArgs("x");
     assert.ok(args.includes("--read-only"));
+  });
+});
+
+describe("sandbox policy enforcement at runtime", () => {
+  it("fails closed with docker guidance when container is required but docker is unavailable", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oah-nodocker-"));
+    const vault = SecretsVault.open({ dir: mkdtempSync(join(tmpdir(), "oah-sec2-")), passphrase: "p" });
+    const runtime = new AgentRuntime(vault, () => false);
+    await assert.rejects(
+      runtime.runAgent({
+        agentDir: dir,
+        manifest: manifest(),
+        agentKey: "test/echo@1.0.0",
+        granted: [],
+        trustLevel: "unknown",
+        model: "local",
+      }),
+      /docker is not available/,
+    );
+  });
+
+  it("rejects unsupported dependencies.system at run time", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oah-sysdeps-"));
+    const vault = SecretsVault.open({ dir: mkdtempSync(join(tmpdir(), "oah-sec3-")), passphrase: "p" });
+    const runtime = new AgentRuntime(vault);
+    await assert.rejects(
+      runtime.runAgent({
+        agentDir: dir,
+        manifest: manifest({ dependencies: { system: ["curl"] } } as never),
+        agentKey: "test/echo@1.0.0",
+        granted: [],
+        trustLevel: "trusted",
+        model: "local",
+      }),
+      /dependencies\.system is not supported/,
+    );
+  });
+
+  it("refuses to run a revoked version", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oah-revoked-"));
+    const vault = SecretsVault.open({ dir: mkdtempSync(join(tmpdir(), "oah-sec4-")), passphrase: "p" });
+    const runtime = new AgentRuntime(vault);
+    await assert.rejects(
+      runtime.runAgent({
+        agentDir: dir,
+        manifest: manifest(),
+        agentKey: "test/echo@1.0.0",
+        granted: [],
+        trustLevel: "trusted",
+        reviewStatus: "revoked",
+        model: "local",
+      }),
+      /revoked/,
+    );
   });
 });

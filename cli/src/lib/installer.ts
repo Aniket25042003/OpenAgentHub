@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, cpSync, existsSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve, basename, dirname } from "node:path";
 import {
@@ -38,6 +39,9 @@ export interface ResolvedPackage {
   signature?: SignatureFile;
   trust: "trusted" | "untrusted" | "unknown" | "local";
   source: string;
+  reviewStatus?: string;
+  statusCheckedAt?: string;
+  archiveDigest?: string;
 }
 
 export function parseSpec(spec: string): { namespace: string; name: string; version?: string } {
@@ -58,11 +62,20 @@ async function resolveFromRegistry(spec: string, registryUrl: string, token?: st
 
   verifySignatureFileStrict(signature, archivePath);
 
+  const blocked = ["rejected", "revoked"].includes(detail.reviewStatus ?? "");
+  if (blocked) {
+    throw new Error(
+      `version ${namespace}/${name}@${detail.manifest.version} is ${detail.reviewStatus} by the registry: ${detail.reviewReason ?? "no reason recorded"}`,
+    );
+  }
+
   return {
     manifest: detail.manifest,
     archivePath,
     signature,
     trust: detail.security?.status === "flagged" ? "untrusted" : (detail.trust ?? "unknown"),
+    reviewStatus: detail.reviewStatus,
+    statusCheckedAt: new Date().toISOString(),
     source: `${registryUrl}/api/v1/agents/${namespace}/${name}/versions/${detail.manifest.version}/archive`,
   };
 }
@@ -183,8 +196,15 @@ export async function installAgent(
     installedAt: new Date().toISOString(),
     source: resolved.source,
     signatureKeyId: resolved.signature?.publicKeyId,
+    reviewStatus: resolved.reviewStatus,
+    statusCheckedAt: resolved.statusCheckedAt,
+    archiveDigest: resolved.archiveDigest ?? (resolved.archivePath ? archiveDigest(resolved.archivePath) : undefined),
   };
   recordInstall(config, agentKey);
   saveGrantedPermissions(config, `${namespace}/${name}@${manifest.version}`, granted);
   console.log(`done: ${agentKeyToString({ namespace, name, version: manifest.version })}`);
+}
+
+function archiveDigest(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }

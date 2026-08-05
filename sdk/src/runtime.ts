@@ -110,6 +110,12 @@ export function checkAgentRequirements(manifest: Manifest, detected: DetectedRun
     messages.push("Agent requires a container sandbox but Docker is not available.");
   }
 
+  const systemDeps = manifest.dependencies?.system;
+  if (Array.isArray(systemDeps) && systemDeps.length > 0) {
+    missing.push("unsupported dependencies.system");
+    messages.push("dependencies.system is not supported by OpenAgentHub yet.");
+  }
+
   if ((manifest.permissions ?? []).includes("browser") && !detected.git) {
     // git used as a proxy signal; browser automation needs a runtime, not git.
   }
@@ -127,18 +133,18 @@ export function decideSandbox(
   detected: DetectedRuntime,
   trustLevel: "trusted" | "untrusted" | "unknown" | "local",
 ): SandboxStrategy {
+  if (trustLevel === "untrusted") {
+    return { mode: "container", reason: "agent is untrusted; requires container isolation" };
+  }
+  if (trustLevel === "unknown") {
+    return { mode: "container", reason: "trust unknown; defaulting to container isolation" };
+  }
   const requested = manifest.runtime.sandbox ?? "auto";
   if (requested === "container") {
     return { mode: "container", reason: "manifest requests container sandbox" };
   }
   if (requested === "isolated-process") {
     return { mode: "isolated-process", reason: "manifest requests isolated-process sandbox" };
-  }
-  if (trustLevel === "untrusted") {
-    return { mode: "container", reason: "agent is untrusted; requires container isolation" };
-  }
-  if (trustLevel === "unknown") {
-    return { mode: "container", reason: "trust unknown; defaulting to container isolation" };
   }
   return { mode: "isolated-process", reason: "trusted or local agent; using fast isolated-process path" };
 }

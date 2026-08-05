@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     publish_per_ip_per_hour: int = 120
     reserved_namespace_prefixes: str = "openagenthub-,oah-,github-,google-,microsoft-,meta-,anthropic-,openai-"
     outbox_poll_interval_seconds: float = 1.0
+    rescan_cooldown_seconds: float = 10.0
 
     @property
     def cors_origin_list(self) -> list[str]:

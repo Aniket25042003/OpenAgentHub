@@ -81,7 +81,9 @@ registry/
   `/versions/{version}/archive`
 - `PUT /agents/{ns}/{name}/versions/{version}` (publish, auth required;
   signature key must be registered + active, namespace must be owned)
-- `POST /versions/{version}/scan` (re-scan, auth required)
+- `POST /versions/{version}/scan` (re-scan, auth required, cooldown-throttled)
+- `GET /api/v1/revocations` (public revocation/quarantine feed)
+- `POST /api/v1/admin/agents/.../review` (reviewer/admin: verify|warning|reject|revoke with reason; see [review.md](review.md))
 - `POST /api/v1/namespaces`, `/namespaces/{ns}/maintainers` (claim + ACL)
 - `POST /api/v1/admin/users/{id}/suspend`, `/admin/agents/.../yank`
   (admin/reviewer controls)

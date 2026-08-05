@@ -34,8 +34,10 @@ before any database write. This enforces, among other rules, the
 
 ## Stage 3 — Static archive scan (`check_archive_safety`)
 
-Runs at publish and again on `POST .../scan` (authenticated). Returns a list
-of findings; an empty list → `clean`, otherwise `flagged`.
+Runs synchronously at publish and again on `POST .../scan` (authenticated,
+throttled by `REGISTRY_RESCAN_COOLDOWN_SECONDS`). Returns a list of findings;
+an empty list → `clean`, otherwise `flagged`. The `scan_requested_at` /
+`scan_completed_at` timestamps track each scan.
 
 Findings are produced when:
 
@@ -66,6 +68,9 @@ root; anything else (nested `agent.yaml`, `agent.yml`, duplicates, AppleDouble
   `"unknown"`.
 - The CLI installer maps `flagged` → `untrusted` → container sandbox, and the
   website + `agent info`-style surfaces display the findings.
+- `flagged` versions are **quarantined**: archive download returns 403 and the
+  public revocation feed (`GET /api/v1/revocations`) lists them, alongside
+  `rejected`/`revoked` review statuses (see [review.md](review.md)).
 
 ## What the scanner does NOT do (yet)
 

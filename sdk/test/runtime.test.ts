@@ -58,4 +58,16 @@ describe("sandbox decision", () => {
     const r = decideSandbox(m, { docker: true } as never, "trusted");
     assert.equal(r.mode, "container");
   });
+
+  it("ignores isolated-process request for untrusted agents (source trust first)", () => {
+    const m = manifest({ runtime: { language: "python", sandbox: "isolated-process" } });
+    const r = decideSandbox(m, { docker: true } as never, "untrusted");
+    assert.equal(r.mode, "container");
+  });
+
+  it("honors isolated-process request only for trusted agents", () => {
+    const m = manifest({ runtime: { language: "python", sandbox: "isolated-process" } });
+    const r = decideSandbox(m, { docker: true } as never, "trusted");
+    assert.equal(r.mode, "isolated-process");
+  });
 });

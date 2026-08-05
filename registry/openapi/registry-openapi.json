@@ -108,6 +108,33 @@
             "title": "Publishedat",
             "type": "string"
           },
+          "reviewReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewreason"
+          },
+          "reviewStatus": {
+            "default": "pending",
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "reviewedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewedat"
+          },
           "security": {
             "anyOf": [
               {
@@ -294,6 +321,105 @@
           "name"
         ],
         "title": "NamespaceClaimRequest",
+        "type": "object"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "verify",
+              "warning",
+              "reject",
+              "revoke"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "ReviewRequest",
+        "type": "object"
+      },
+      "RevocationFeedResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RevocationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RevocationFeedResponse",
+        "type": "object"
+      },
+      "RevocationItem": {
+        "properties": {
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewStatus": {
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "securityStatus": {
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "reason",
+          "reviewStatus",
+          "securityStatus",
+          "updatedAt"
+        ],
+        "title": "RevocationItem",
         "type": "object"
       },
       "SearchResponse": {
@@ -559,6 +685,76 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/agents/{namespace}/{name}/versions/{version}/review": {
+      "post": {
+        "operationId": "review_version_api_v1_admin_agents__namespace___name__versions__version__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Review Version"
+      }
+    },
     "/api/v1/admin/agents/{namespace}/{name}/versions/{version}/yank": {
       "post": {
         "operationId": "yank_version_api_v1_admin_agents__namespace___name__versions__version__yank_post",
@@ -1376,6 +1572,24 @@
           }
         ],
         "summary": "Add Maintainer"
+      }
+    },
+    "/api/v1/revocations": {
+      "get": {
+        "operationId": "revocation_feed_api_v1_revocations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevocationFeedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Revocation Feed"
       }
     },
     "/health": {

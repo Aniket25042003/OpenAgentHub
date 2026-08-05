@@ -56,11 +56,11 @@ curl -fsS "$REGISTRY/health" >/dev/null 2>&1 || fail "registry did not become he
 step "minting a test token"
 TOKEN="$(cd "$REG" && uv run python - <<'PY'
 import asyncio
-from app.db import _session_factory
-from app.models import User
-from app.auth import issue_token
+from app.db import get_session_factory
+from app.identity.models import User
+from app.identity.application import issue_token
 async def main():
-    async with _session_factory() as s:
+    async with get_session_factory()() as s:
         u = User(username="e2e-user")
         s.add(u)
         await s.commit()
@@ -83,7 +83,7 @@ OUT="$("$CLI" login --token "$TOKEN" --registry "$REGISTRY")"
 assert_contains "$OUT" "authenticated as e2e-user"
 OUT="$("$CLI" publish "$PROJ" --registry "$REGISTRY")"
 assert_contains "$OUT" "published demo/hello@0.1.0"
-assert_contains "$OUT" "security scan queued"
+assert_contains "$OUT" "security scan: clean"
 
 # --- search --------------------------------------------------------------------
 step "search"

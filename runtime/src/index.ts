@@ -6,4 +6,5 @@ export * from "./runtime.js";
 export * from "./sandbox/types.js";
 export * from "./sandbox/process.js";
 export * from "./sandbox/container.js";
+export * from "./sandbox/policy.js";
 export * from "./system/index.js";

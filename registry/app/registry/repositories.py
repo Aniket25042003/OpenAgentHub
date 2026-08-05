@@ -2,7 +2,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.registry.models import Agent, AgentVersion, Namespace, NamespaceMember
+from app.registry.models import Agent, AgentVersion, Namespace, NamespaceMember, VersionReviewEvent
 
 
 class NamespaceRepository:
@@ -140,6 +140,17 @@ class VersionRepository:
             )
         ).scalars().all()
 
+    async def blocked_versions(self) -> list[AgentVersion]:
+        stmt = (
+            select(AgentVersion)
+            .where(
+                AgentVersion.review_status.in_(("rejected", "revoked")) | (AgentVersion.security_status == "flagged")
+            )
+            .order_by(AgentVersion.reviewed_at.desc())
+            .options(joinedload(AgentVersion.agent))
+        )
+        return (await self.session.execute(stmt)).scalars().all()
+
     async def create(
         self,
         *,
@@ -183,3 +194,45 @@ class VersionRepository:
             return False
         version.yanked = yanked
         return True
+
+    def set_scan_timestamps(self, version: AgentVersion, *, requested: bool = False, completed: bool = False) -> None:
+        from app.db import utcnow
+
+        now = utcnow()
+        if requested:
+            version.scan_requested_at = now
+        if completed:
+            version.scan_completed_at = now
+
+    def set_review(self, version: AgentVersion, *, status: str, reason: str, reviewer_id: int) -> bool:
+        if version.review_status == status and version.review_reason == reason:
+            return False
+        version.review_status = status
+        version.review_reason = reason
+        version.reviewed_by_id = reviewer_id
+        version.reviewed_at = func.now()
+        return True
+
+    async def record_review_event(
+        self,
+        version: AgentVersion,
+        *,
+        action: str,
+        reason: str,
+        notes: str | None,
+        reviewer_id: int,
+        digest: str,
+        signer_fingerprint: str | None,
+    ) -> VersionReviewEvent:
+        event = VersionReviewEvent(
+            version_id=version.id,
+            action=action,
+            reason=reason,
+            notes=notes,
+            digest=digest,
+            signer_fingerprint=signer_fingerprint,
+            reviewer_id=reviewer_id,
+        )
+        self.session.add(event)
+        await self.session.flush()
+        return event

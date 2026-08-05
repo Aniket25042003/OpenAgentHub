@@ -69,13 +69,45 @@ Per-command behavior. Flags shown are the ones that matter; run
 
 - Flags: `--model` (e.g. `deepseek` or `openai:gpt-4o`), `--interface`
   (`cli`|`mcp`|`http`, default cli), `--input JSON`, `--interactive`,
-  `--timeout ms` (default 120_000), `--agent-home`.
+  `--timeout ms` (default 120_000), `--agent-home`, `--allow-secrets`.
 - Requires the agent to be installed (suggests `agent install ...`).
 - Reads **piped stdin** when `--input` absent and stdin isn't a TTY.
-- Constructs `AgentRuntime(vault)`, calls `runAgent` with granted permissions
-  from config, the installed trust level, and the model flag.
-- Writes stdout/stderr; exits with the agent's exit code. `--interactive`
-  wires the terminal to the child (used for MCP stdio).
+- Constructs `AgentRuntime(vault)`, calls `runAgent` with the *effective*
+  permission set (saved ∩ manifest — tampered saved grants refuse to start),
+  the installed trust level, and the model flag.
+- **Revocation check first**: with a registry URL configured, pulls the public
+  revocation feed; a matching `rejected`/`revoked`/`flagged` version refuses to
+  run; a stale/failed feed refresh warns and forces container isolation rather
+  than process trust.
+- **Secrets**: vault-stored secrets matching `manifest.secrets` are prompted
+  one-by-one unless `--allow-secrets` is set; un-granted secrets are skipped
+  with a warning; non-TTY runs skip prompting.
+- Logs `sandbox: <mode> (<reason>)` and the exposed secrets, writes
+  stdout/stderr, exits with the agent's exit code. `--interactive` wires the
+  terminal to the child (used for MCP stdio).
+
+## `agent sandbox show ns/name[@version]`
+
+- Prints the effective sandbox decision for the installed agent: trust level,
+  review status + freshness, manifest preference, any digest-bound override
+  (`container`/`process`, digest, when it was set), and the final mode with the
+  reason.
+
+## `agent sandbox set ns/name --sandbox container|process [--acknowledge-risk]`
+
+- Sets a **local override** for how the agent runs. Overrides are
+  digest-bound: they record the installed archive's sha256 and silently
+  expire (fall back to container isolation) if the agent is reinstalled to a
+  different digest.
+- `process` is only accepted for **trusted/local** agents and requires
+  `--acknowledge-risk`; container overrides are always allowed.
+- The override is stored in `config.json` (`sandboxOverrides`), not in the
+  manifest.
+
+## `agent sandbox reset ns/name`
+
+- Removes the local sandbox override; the manifest preference and trust rules
+  apply again.
 
 ## `agent verify ns/name[@version]`
 
