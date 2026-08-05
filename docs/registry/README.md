@@ -36,11 +36,11 @@ registry/
 │   ├── store.py          ArchiveStore (filesystem archive blobs)
 │   ├── telemetry.py      request IDs, structured logging, metrics
 │   ├── schemas.py        Pydantic request/response schemas (API contract)
-│   ├── identity/         users, GitHub OAuth, JWT, signing keys
-│   ├── registry/         agents + versions, publish/search/download use cases
-│   ├── security_review/  archive safety scan + per-version scan state (ports)
+│   ├── identity/         users (roles/status), GitHub OAuth, JWT, signing-key lifecycle
+│   ├── registry/         agents + versions, namespaces + ACL, publish/search/download use cases
+│   ├── security_review/  canonical manifest schema + archive safety scan (ports)
 │   ├── organizations/    module boundary (authz lands in later milestones)
-│   ├── entitlements/     module boundary (quotas/billing land later)
+│   ├── entitlements/     publish quotas + rate limits (billing lands later)
 │   ├── audit/            append-only audit events
 │   ├── outbox/           outbox events, durable queue, dispatcher, worker base
 │   └── workers/          scan / notifications / billing / maintenance entrypoints
@@ -66,6 +66,12 @@ registry/
 | `REGISTRY_PUBLIC_BASE_URL` | `http://localhost:8000` | public-facing links |
 | `REGISTRY_CORS_ORIGINS` | `*` | comma-separated or `*` |
 | `REGISTRY_MAX_ARCHIVE_BYTES` | 250 MiB | upload cap (archive + scan) |
+| `REGISTRY_MAX_ARCHIVE_UNCOMPRESSED_BYTES` | 512 MiB | scan cap on uncompressed total |
+| `REGISTRY_MAX_ARCHIVE_ENTRIES` | 10 000 | scan cap on member count |
+| `REGISTRY_PUBLISH_QUOTA_NEW_ACCOUNT_DAILY` | 10 | daily publishes for accounts < `..._DAYS` old |
+| `REGISTRY_PUBLISH_QUOTA_NEW_ACCOUNT_DAYS` | 7 | account age for the new-account quota |
+| `REGISTRY_PUBLISH_PER_IP_PER_HOUR` | 120 | in-memory per-IP publish throttle |
+| `REGISTRY_RESERVED_NAMESPACE_PREFIXES` | `openagenthub-,oah-,github-,...` | reserved namespace names |
 | `REGISTRY_OUTBOX_POLL_INTERVAL_SECONDS` | 1.0 | outbox dispatcher poll interval |
 
 ## API surface (see [api.md](api.md) for the contract)
@@ -73,21 +79,32 @@ registry/
 - `GET /api/v1/agents` (+ search filters), `/agents/{ns}/{name}`,
   `/agents/{ns}/{name}/versions`, `/versions/{version}`,
   `/versions/{version}/archive`
-- `PUT /agents/{ns}/{name}/versions/{version}` (publish, auth required)
-- `POST /versions/{version}/scan` (re-scan)
+- `PUT /agents/{ns}/{name}/versions/{version}` (publish, auth required;
+  signature key must be registered + active, namespace must be owned)
+- `POST /versions/{version}/scan` (re-scan, auth required)
+- `POST /api/v1/namespaces`, `/namespaces/{ns}/maintainers` (claim + ACL)
+- `POST /api/v1/admin/users/{id}/suspend`, `/admin/agents/.../yank`
+  (admin/reviewer controls)
 - `POST /api/v1/auth/github` (OAuth code → JWT)
-- `POST /api/v1/keys` (register signing key)
-- `GET /api/v1/me` (current user)
+- `POST /api/v1/keys`, `DELETE /api/v1/keys/{id}` (register/revoke signing key)
+- `GET /api/v1/me` (current user, keys, role/status)
 - `GET /health` (liveness), `GET /ready` (dependency status), `GET /metrics`
   (counters), `GET /openapi.json` (contract; snapshot in `openapi/`)
 
 ## Security posture
 
 - Re-verifies the Ed25519 signature on every publish (`app/crypto.py`,
-  base64 — never hex).
+  base64 — never hex); the signer key must be registered to the publisher and
+  active (not revoked/expired).
+- Namespaces are bound to a single owning account with an explicit maintainer
+  ACL; cross-account publishes are rejected with 403.
+- Manifests are validated against the canonical `agent.schema.json` before any
+  DB write (byte-identical to `specs/`; CI checks drift).
 - Static archive scan → `clean` / `flagged` security status stored with each
   version (`app/security_review/scanning.py`); publish enqueues an async
   `scan.requested` outbox event processed by the scan worker.
+- New-account publish quotas (audit-enforced) + per-IP publish throttle (429
+  with `Retry-After`).
 - Upload caps: archive bytes (413 beyond `REGISTRY_MAX_ARCHIVE_BYTES`) and
   signature file (1 MiB).
 - Path-traversal guard in `ArchiveStore._safe_segment`.

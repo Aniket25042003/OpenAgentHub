@@ -110,7 +110,7 @@ async def test_archive_with_symlink_is_flagged(client):
     import io
     import tarfile
 
-    from tests.helpers import make_keypair, sha256_hex
+    from tests.helpers import make_keypair, sha256_hex, public_key_fingerprint as tests_helpers_public_key_fingerprint
 
     token, _ = await create_user()
     key, priv, pub = make_keypair()
@@ -135,7 +135,7 @@ async def test_archive_with_symlink_is_flagged(client):
         "version": "1.0.0",
         "algorithm": "ed25519",
         "publicKey": pub,
-        "publicKeyId": "",
+        "publicKeyId": tests_helpers_public_key_fingerprint(pub),
         "sha256": sha,
         "signature": base64.b64encode(key.sign(f"openagenthub-signature-v1:{full}@1.0.0:{sha}".encode())).decode(),
     }
@@ -159,7 +159,7 @@ async def test_rescan_updates_security(client):
     token, _ = await create_user()
     archive, sig, _, _ = signed_package("acme", "rescan", "1.0.0")
     assert (await publish(client, token, "acme", "rescan", "1.0.0", archive, sig)).status_code == 200
-    res = await client.post("/api/v1/agents/acme/rescan/versions/1.0.0/scan")
+    res = await client.post("/api/v1/agents/acme/rescan/versions/1.0.0/scan", headers=auth_header(token))
     assert res.status_code == 200
     assert res.json()["status"] == "clean"
 

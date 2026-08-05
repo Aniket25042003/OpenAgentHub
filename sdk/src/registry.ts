@@ -37,6 +37,14 @@ export interface AgentVersionDetail {
   trust: "trusted" | "untrusted" | "unknown";
   signature?: SignatureFile;
   security?: SecurityReportSummary;
+  yanked?: boolean;
+  signerKey?: {
+    id: number;
+    fingerprint: string;
+    label?: string;
+    revoked: boolean;
+    expired: boolean;
+  };
 }
 
 export interface SecurityReportSummary {
@@ -167,16 +175,42 @@ export class RegistryClient {
     );
   }
 
-  async me(): Promise<{ username: string; publicKeys: { id: string }[] }> {
+  async me(): Promise<{
+    username: string;
+    role: string;
+    status: string;
+    publicKeys: {
+      id: number;
+      fingerprint: string;
+      label?: string;
+      revoked: boolean;
+      expired: boolean;
+    }[];
+  }> {
     const res = await this.request("/api/v1/me");
-    return (await res.json()) as { username: string; publicKeys: { id: string }[] };
+    return (await res.json()) as {
+      username: string;
+      role: string;
+      status: string;
+      publicKeys: {
+        id: number;
+        fingerprint: string;
+        label?: string;
+        revoked: boolean;
+        expired: boolean;
+      }[];
+    };
   }
 
-  async uploadPublicKey(publicKeyPem: string): Promise<void> {
+  async revokePublicKey(keyId: number): Promise<void> {
+    await this.request(`/api/v1/keys/${keyId}`, { method: "DELETE" });
+  }
+
+  async uploadPublicKey(publicKeyPem: string, label?: string, expiresAt?: string): Promise<void> {
     const res = await this.request("/api/v1/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ publicKey: publicKeyPem }),
+      body: JSON.stringify({ publicKey: publicKeyPem, label, expiresAt }),
     });
     await res.json();
   }

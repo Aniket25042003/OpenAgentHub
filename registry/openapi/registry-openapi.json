@@ -128,6 +128,16 @@
               }
             ]
           },
+          "signerKey": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignerKeyInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "trust": {
             "enum": [
               "trusted",
@@ -140,6 +150,11 @@
           "version": {
             "title": "Version",
             "type": "string"
+          },
+          "yanked": {
+            "default": false,
+            "title": "Yanked",
+            "type": "boolean"
           }
         },
         "required": [
@@ -219,17 +234,42 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "MaintainerAddRequest": {
+        "properties": {
+          "role": {
+            "default": "maintainer",
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "MaintainerAddRequest",
+        "type": "object"
+      },
       "MeResponse": {
         "properties": {
           "publicKeys": {
             "items": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
+              "$ref": "#/components/schemas/SignerKeyInfo"
             },
             "title": "Publickeys",
             "type": "array"
+          },
+          "role": {
+            "default": "publisher",
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
           },
           "username": {
             "title": "Username",
@@ -241,6 +281,19 @@
           "publicKeys"
         ],
         "title": "MeResponse",
+        "type": "object"
+      },
+      "NamespaceClaimRequest": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "NamespaceClaimRequest",
         "type": "object"
       },
       "SearchResponse": {
@@ -335,8 +388,83 @@
         "title": "SignatureFile",
         "type": "object"
       },
+      "SignerKeyInfo": {
+        "properties": {
+          "expired": {
+            "default": false,
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "revoked": {
+            "default": false,
+            "title": "Revoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "fingerprint"
+        ],
+        "title": "SignerKeyInfo",
+        "type": "object"
+      },
+      "SuspendRequest": {
+        "properties": {
+          "suspended": {
+            "title": "Suspended",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "suspended"
+        ],
+        "title": "SuspendRequest",
+        "type": "object"
+      },
       "UploadKeyRequest": {
         "properties": {
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
           "publicKey": {
             "title": "Publickey",
             "type": "string"
@@ -403,6 +531,19 @@
         ],
         "title": "VersionsResponse",
         "type": "object"
+      },
+      "YankRequest": {
+        "properties": {
+          "yanked": {
+            "title": "Yanked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "yanked"
+        ],
+        "title": "YankRequest",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -418,6 +559,128 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/agents/{namespace}/{name}/versions/{version}/yank": {
+      "post": {
+        "operationId": "yank_version_api_v1_admin_agents__namespace___name__versions__version__yank_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/YankRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Yank Version"
+      }
+    },
+    "/api/v1/admin/users/{user_id}/suspend": {
+      "post": {
+        "operationId": "admin_suspend_user_api_v1_admin_users__user_id__suspend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Suspend User"
+      }
+    },
     "/api/v1/agents": {
       "get": {
         "operationId": "search_agents_api_v1_agents_get",
@@ -870,6 +1133,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Trigger Scan"
       }
     },
@@ -952,6 +1220,48 @@
         "summary": "Upload Key"
       }
     },
+    "/api/v1/keys/{key_id}": {
+      "delete": {
+        "operationId": "revoke_key_api_v1_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Key"
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "me_api_v1_me_get",
@@ -973,6 +1283,99 @@
           }
         ],
         "summary": "Me"
+      }
+    },
+    "/api/v1/namespaces": {
+      "post": {
+        "operationId": "claim_namespace_api_v1_namespaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamespaceClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Claim Namespace"
+      }
+    },
+    "/api/v1/namespaces/{namespace}/maintainers": {
+      "post": {
+        "operationId": "add_maintainer_api_v1_namespaces__namespace__maintainers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintainerAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Maintainer"
       }
     },
     "/health": {

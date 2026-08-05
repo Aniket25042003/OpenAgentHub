@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session
-from app.identity.application import get_current_user
+from app.entitlements.application import QuotaExceeded, check_publish_rate
+from app.identity.application import require_active_user, require_reviewer_or_admin
 from app.registry import application
 from app.registry.application import (
     AgentNotFound,
@@ -12,11 +13,25 @@ from app.registry.application import (
     ArchiveTooLarge,
     InvalidPayload,
     InvalidSignatureFile,
+    MaintainerNotFound,
+    NamespaceConflict,
+    NamespaceForbidden,
+    NamespaceNotFound,
+    NamespaceReserved,
     RegistryError,
+    SigningKeyForbidden,
     VersionConflict,
     VersionNotFound,
 )
-from app.schemas import AgentSummary, AgentVersionDetail, SearchResponse, VersionsResponse
+from app.schemas import (
+    AgentSummary,
+    AgentVersionDetail,
+    MaintainerAddRequest,
+    NamespaceClaimRequest,
+    SearchResponse,
+    VersionsResponse,
+    YankRequest,
+)
 
 router = APIRouter(prefix="/api/v1")
 
@@ -86,9 +101,18 @@ async def publish_version(
     version: str,
     archive: UploadFile,
     signature: UploadFile,
+    request: Request,
     session: AsyncSession = Depends(get_session),
-    user=Depends(get_current_user),
+    user = Depends(require_active_user),
 ):
+    try:
+        check_publish_rate(request.client.host if request.client else "unknown")
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
     archive_data = await archive.read(get_settings().max_archive_bytes + 1)
     signature_raw = await signature.read(1024 * 1024 + 1)
     try:
@@ -109,6 +133,14 @@ async def publish_version(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except VersionConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (SigningKeyForbidden, NamespaceForbidden, NamespaceReserved) as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
     except RegistryError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     await session.commit()
@@ -116,10 +148,76 @@ async def publish_version(
 
 
 @router.post("/agents/{namespace}/{name}/versions/{version}/scan")
-async def trigger_scan(namespace: str, name: str, version: str, session: AsyncSession = Depends(get_session)):
+async def trigger_scan(
+    namespace: str,
+    name: str,
+    version: str,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_active_user),
+):
     try:
         scan_status, findings = await application.trigger_rescan(session, namespace, name, version)
     except VersionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     await session.commit()
     return {"status": scan_status, "findings": findings}
+
+
+@router.post("/namespaces")
+async def claim_namespace(
+    req: NamespaceClaimRequest,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_active_user),
+):
+    try:
+        ns = await application.claim_namespace(session, user, req.name)
+    except (NamespaceConflict, NamespaceReserved, RegistryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT if isinstance(exc, NamespaceConflict) else (
+                status.HTTP_403_FORBIDDEN if isinstance(exc, NamespaceReserved) else status.HTTP_400_BAD_REQUEST
+            ),
+            detail=str(exc),
+        ) from exc
+    await session.commit()
+    return {"ok": True, "namespace": ns.name}
+
+
+@router.post("/namespaces/{namespace}/maintainers")
+async def add_maintainer(
+    namespace: str,
+    req: MaintainerAddRequest,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_active_user),
+):
+    try:
+        result = await application.add_namespace_maintainer(session, user, namespace, req.username, req.role)
+    except (NamespaceNotFound, MaintainerNotFound) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (NamespaceForbidden, RegistryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN if isinstance(exc, NamespaceForbidden) else status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except NamespaceConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await session.commit()
+    return result
+
+
+@router.post("/admin/agents/{namespace}/{name}/versions/{version}/yank")
+async def yank_version(
+    namespace: str,
+    name: str,
+    version: str,
+    req: YankRequest,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_reviewer_or_admin),
+):
+    try:
+        changed = await application.yank_version(session, user, namespace, name, version, req.yanked)
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except VersionNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    await session.commit()
+    return {"ok": True, "yanked": req.yanked, "changed": changed}

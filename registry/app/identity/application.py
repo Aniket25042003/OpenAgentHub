@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 import httpx
 import jwt
@@ -6,6 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit.repositories import AuditRepository
 from app.config import get_settings
 from app.db import get_session
 from app.identity.models import SigningKey, User
@@ -15,7 +17,23 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 class IdentityError(ValueError):
-    pass
+    status_code = status.HTTP_400_BAD_REQUEST
+
+
+class KeyAlreadyRegistered(IdentityError):
+    status_code = status.HTTP_409_CONFLICT
+
+
+class KeyNotFound(IdentityError):
+    status_code = status.HTTP_404_NOT_FOUND
+
+
+class KeyNotOwned(IdentityError):
+    status_code = status.HTTP_403_FORBIDDEN
+
+
+class UserNotFound(IdentityError):
+    status_code = status.HTTP_404_NOT_FOUND
 
 
 def issue_token(user_id: int, username: str) -> str:
@@ -50,6 +68,25 @@ async def get_current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user no longer exists")
     return user
+
+
+async def require_active_user(user: User = Depends(get_current_user)) -> User:
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account is suspended")
+    return user
+
+
+def require_roles(*roles: str):
+    async def _check(user: User = Depends(require_active_user)) -> User:
+        if user.role not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient role")
+        return user
+
+    return _check
+
+
+require_admin = require_roles("admin")
+require_reviewer_or_admin = require_roles("reviewer", "admin")
 
 
 async def exchange_github_code(code: str) -> tuple[str, str, str | None]:
@@ -95,7 +132,14 @@ async def login_with_github(session: AsyncSession, code: str) -> User:
     return user
 
 
-async def register_signing_key(session: AsyncSession, user: User, public_key_pem: str) -> tuple[str, int]:
+async def register_signing_key(
+    session: AsyncSession,
+    user: User,
+    public_key_pem: str,
+    *,
+    label: str | None = None,
+    expires_at: datetime | None = None,
+) -> tuple[str, int]:
     from app.crypto import SignatureError, load_ed25519_public_key, public_key_fingerprint
 
     try:
@@ -107,10 +151,59 @@ async def register_signing_key(session: AsyncSession, user: User, public_key_pem
     repo = SigningKeyRepository(session)
     existing = await repo.by_fingerprint(fingerprint)
     if existing is not None:
+        if existing.user_id != user.id:
+            raise KeyAlreadyRegistered("public key is already registered to another account")
         return existing.fingerprint, existing.id
-    key = await repo.add(user_id=user.id, public_key_pem=public_key_pem, fingerprint=fingerprint)
+    key = await repo.add(
+        user_id=user.id, public_key_pem=public_key_pem, fingerprint=fingerprint, label=label, expires_at=expires_at
+    )
+    await AuditRepository(session).record(
+        actor_id=user.id,
+        action="key.uploaded",
+        target_type="signing_key",
+        target_id=key.id,
+        detail={"fingerprint": fingerprint, "label": label},
+    )
     return key.fingerprint, key.id
+
+
+async def revoke_signing_key(session: AsyncSession, user: User, key_id: int) -> SigningKey:
+    repo = SigningKeyRepository(session)
+    key = await repo.by_id(key_id)
+    if key is None:
+        raise KeyNotFound("signing key not found")
+    if key.user_id != user.id:
+        raise KeyNotOwned("you do not own this signing key")
+    if key.revoked_at is None:
+        repo.revoke(key)
+        await AuditRepository(session).record(
+            actor_id=user.id,
+            action="key.revoked",
+            target_type="signing_key",
+            target_id=key.id,
+            detail={"fingerprint": key.fingerprint},
+        )
+    return key
 
 
 async def list_signing_keys(session: AsyncSession, user: User) -> list[SigningKey]:
     return await SigningKeyRepository(session).for_user(user.id)
+
+
+async def suspend_user(session: AsyncSession, actor: User, user_id: int, suspended: bool) -> User:
+    user = await UserRepository(session).by_id(user_id)
+    if user is None:
+        raise UserNotFound("user not found")
+    if user.id == actor.id:
+        raise IdentityError("cannot suspend yourself")
+    new_status = "suspended" if suspended else "active"
+    if user.status != new_status:
+        UserRepository(session).update_status(user, new_status)
+        await AuditRepository(session).record(
+            actor_id=actor.id,
+            action="user.suspended" if suspended else "user.unsuspended",
+            target_type="user",
+            target_id=user.id,
+            detail={"username": user.username},
+        )
+    return user

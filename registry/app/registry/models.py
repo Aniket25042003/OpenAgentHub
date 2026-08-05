@@ -1,9 +1,34 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, String, Text, UniqueConstraint, ForeignKey
+from sqlalchemy import JSON, Boolean, String, Text, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, JSONType, utcnow
+
+
+class Namespace(Base):
+    __tablename__ = "namespaces"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    reserved: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+    members: Mapped[list["NamespaceMember"]] = relationship(back_populates="namespace", cascade="all, delete-orphan")
+
+
+class NamespaceMember(Base):
+    __tablename__ = "namespace_members"
+    __table_args__ = (UniqueConstraint("namespace_id", "user_id", name="uq_namespace_member"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    namespace_id: Mapped[int] = mapped_column(ForeignKey("namespaces.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16), default="maintainer")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    namespace: Mapped[Namespace] = relationship(back_populates="members")
 
 
 class Agent(Base):
@@ -44,5 +69,6 @@ class AgentVersion(Base):
     download_count: Mapped[int] = mapped_column(default=0)
     security_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     security_findings: Mapped[list] = mapped_column(JSONType, default=list)
+    yanked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     agent: Mapped[Agent] = relationship(back_populates="versions")

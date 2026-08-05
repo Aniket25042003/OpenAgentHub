@@ -17,9 +17,11 @@ from app.main import create_app  # noqa: E402
 @pytest.fixture(autouse=True)
 async def _database():
     from app.db import dispose_db, reset_db
+    from app.entitlements.application import reset_publish_limits
     from app.telemetry import metrics
 
     metrics.reset()
+    reset_publish_limits()
     await reset_db()
     yield
     await dispose_db()

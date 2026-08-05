@@ -32,6 +32,28 @@ export const IGNORE_PATTERNS = [
   "*.sig.json",
 ];
 
+export const SECRET_IGNORE_PATTERNS = [
+  ".env",
+  ".env.local",
+  ".env.development",
+  ".env.production",
+  ".env.test",
+  ".env.staging",
+  "*.pem",
+  "*.key",
+  "*.p12",
+  "*.pfx",
+  "master.key",
+  "id_rsa",
+  "id_ed25519",
+  "id_dsa",
+  ".ssh",
+  "credentials.json",
+  ".pypirc",
+  ".npmrc",
+  ".openagenthub",
+];
+
 export interface SignatureFile {
   schemaVersion: 1;
   algorithm: "ed25519";
@@ -102,14 +124,14 @@ function exportedPublicKey(privateKeyPem: string): string {
 }
 
 function ignoreArgs(): string[] {
-  return IGNORE_PATTERNS.map((p) => `--exclude=${p}`);
+  return [...IGNORE_PATTERNS, ...SECRET_IGNORE_PATTERNS].map((p) => `--exclude=${p}`);
 }
 
 export function listProjectFiles(dir: string): string[] {
   const out: string[] = [];
   const walk = (d: string, rel = "") => {
     for (const name of readdirSync(d)) {
-      if (IGNORE_PATTERNS.some((p) => name === p || name.endsWith(p))) continue;
+      if (isIgnoredName(name)) continue;
       const full = join(d, name);
       const st = statSync(full);
       if (st.isDirectory()) {
@@ -123,6 +145,11 @@ export function listProjectFiles(dir: string): string[] {
   };
   walk(dir);
   return out;
+}
+
+function isIgnoredName(name: string): boolean {
+  const matches = (p: string) => (p.startsWith("*") ? name.endsWith(p.slice(1)) : name === p);
+  return [...IGNORE_PATTERNS, ...SECRET_IGNORE_PATTERNS].some(matches);
 }
 
 export interface UnpackLimits {

@@ -6,14 +6,21 @@
 
 - Users are stored in the `users` table; identity is keyed by GitHub
   (`github_id` unique).
-- Agents have an `owner_id`; signing keys belong to users.
+- Users carry a `role` (`publisher` | `reviewer` | `admin`) and a `status`
+  (`active` | `suspended`). Suspended accounts are rejected on every mutating
+  route with 403. Admin endpoints require `admin`; review/yank endpoints
+  require `reviewer` or `admin`.
+- Agents have an `owner_id`; signing keys belong to users; namespaces belong
+  to a single owner account with an explicit maintainer ACL.
 
 ## JWT
 
 - `issue_token(user_id, username)` → HS256 JWT with `sub`, `username`, `iat`,
   `exp` (`REGISTRY_TOKEN_TTL_SECONDS`, default 7 days).
 - `decode_token` + `get_current_user` (FastAPI `HTTPBearer` dependency) protect
-  publish/keys/me routes. Invalid/expired → 401.
+  publish/keys/me routes. Invalid/expired → 401. `require_active_user` adds a
+  403 for suspended accounts; `require_admin` / `require_reviewer_or_admin`
+  gate the `/admin/...` endpoints.
 
 ## GitHub OAuth exchange
 
@@ -44,16 +51,22 @@ obtained from a GitHub OAuth code.
 
 ## Signing keys
 
-`POST /api/v1/keys { publicKey }`:
+`POST /api/v1/keys { publicKey, label?, expiresAt? }`:
 
 - Validates the PEM parses as an Ed25519 public key → 400 otherwise.
 - Computes `public_key_fingerprint` (sha256 of SPKI DER, first 16 hex).
-- Registers it (idempotent by fingerprint) to the current user.
-- `GET /api/v1/me` lists a user's keys.
+- Registers it (idempotent by fingerprint) to the current user; a fingerprint
+  already registered to a **different** account → 409.
+- `DELETE /api/v1/keys/{id}` revokes the key (owner only; idempotent).
+  Revoked or expired keys can no longer sign new versions (403 on publish).
+- `GET /api/v1/me` lists a user's keys with `id`, `fingerprint`, `label`,
+  `revoked`, `expired`.
+- Key upload, revocation, and suspension are recorded in the audit log.
 
-Publish does **not** require the key to be pre-registered today (the signature
-is verified with the public key in the signature file); key registration
-exists to support verified-publisher attribution going forward.
+**Publish requires the signature's `publicKeyId` to match an active key
+registered to the authenticated publisher.** Unknown, cross-account, revoked,
+or expired keys are rejected with 403. Historical versions remain verifiable
+after a key is revoked; the version detail surfaces `signerKey.revoked`.
 
 ## Config for auth
 

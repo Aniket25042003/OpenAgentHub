@@ -154,4 +154,27 @@ describe("package pack/unpack", () => {
     await tar.c({ gzip: true, file: evil, cwd: outer }, ["agent.yaml"]);
     await assert.rejects(() => unpackAgent(evil, { destDir: tmp() }), /manifest invalid/);
   });
+
+  it("excludes secret files when packing", async () => {
+    const kp = generateKeyPair();
+    const proj = tmp();
+    makeProject(proj);
+    writeFileSync(join(proj, ".env"), "TOKEN=secret\n");
+    writeFileSync(join(proj, ".env.local"), "TOKEN=secret\n");
+    writeFileSync(join(proj, "master.key"), "secret\n");
+    writeFileSync(join(proj, "id_ed25519"), "secret\n");
+    writeFileSync(join(proj, "deploy.pem"), "secret\n");
+    writeFileSync(join(proj, "credentials.json"), "secret\n");
+    mkdirSync(join(proj, ".openagenthub"));
+    writeFileSync(join(proj, ".openagenthub", "master.key"), "secret\n");
+
+    const pkg = packAgent(proj, { privateKeyPem: kp.privateKey, outDir: tmp() });
+    const dest = tmp();
+    const res = await unpackAgent(pkg.archivePath, { destDir: dest });
+    for (const secret of [".env", ".env.local", "master.key", "id_ed25519", "deploy.pem", "credentials.json", ".openagenthub"]) {
+      assert.ok(!existsSync(join(dest, secret)), `${secret} must not be packed`);
+    }
+    assert.ok(existsSync(join(dest, "hello.py")));
+    assert.ok(!res.files.some((f) => f.endsWith("master.key") || f === ".env"));
+  });
 });

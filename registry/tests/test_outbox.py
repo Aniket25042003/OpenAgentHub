@@ -11,7 +11,7 @@ from app.outbox.queue import DurableQueue
 from app.outbox.worker import JobWorker
 from app.workers.scan import ScanWorker
 from tests.factories import create_user, publish, signed_package
-from tests.helpers import hello_manifest, make_keypair, sha256_hex, signature_payload
+from tests.helpers import hello_manifest, make_keypair, public_key_fingerprint, sha256_hex, signature_payload
 
 
 async def test_publish_enqueues_scan_event(client):
@@ -105,7 +105,7 @@ async def test_scan_worker_flags_hostile_archive(client):
         "version": "1.0.0",
         "algorithm": "ed25519",
         "publicKey": pub,
-        "publicKeyId": "",
+        "publicKeyId": public_key_fingerprint(pub),
         "sha256": sha,
         "signature": base64.b64encode(key.sign(signature_payload(full, "1.0.0", sha).encode())).decode(),
     }

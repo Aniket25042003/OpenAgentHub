@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -37,6 +37,30 @@ class SignatureFile(BaseModel):
     signature: str
 
 
+class SignerKeyInfo(BaseModel):
+    id: int
+    fingerprint: str
+    label: str | None = None
+    revoked: bool = False
+    expired: bool = False
+
+    @classmethod
+    def from_key(cls, key) -> "SignerKeyInfo":
+        expired = False
+        if key.expires_at is not None:
+            expires = key.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            expired = expires <= datetime.now(timezone.utc)
+        return cls(
+            id=key.id,
+            fingerprint=key.fingerprint,
+            label=key.label,
+            revoked=key.revoked_at is not None,
+            expired=expired,
+        )
+
+
 class AgentVersionDetail(BaseModel):
     name: str
     version: str
@@ -48,6 +72,8 @@ class AgentVersionDetail(BaseModel):
     trust: TrustLevel
     signature: SignatureFile | None = None
     security: SecurityReport | None = None
+    yanked: bool = False
+    signerKey: SignerKeyInfo | None = None
 
 
 class SearchResponse(BaseModel):
@@ -60,11 +86,15 @@ class VersionsResponse(BaseModel):
 
 class MeResponse(BaseModel):
     username: str
-    publicKeys: list[dict[str, str]]
+    role: str = "publisher"
+    status: str = "active"
+    publicKeys: list[SignerKeyInfo]
 
 
 class UploadKeyRequest(BaseModel):
     publicKey: str
+    label: str | None = None
+    expiresAt: datetime | None = None
 
 
 class GithubExchangeRequest(BaseModel):
@@ -74,6 +104,23 @@ class GithubExchangeRequest(BaseModel):
 class GithubExchangeResponse(BaseModel):
     token: str
     username: str
+
+
+class NamespaceClaimRequest(BaseModel):
+    name: str
+
+
+class MaintainerAddRequest(BaseModel):
+    username: str
+    role: str = "maintainer"
+
+
+class SuspendRequest(BaseModel):
+    suspended: bool
+
+
+class YankRequest(BaseModel):
+    yanked: bool
 
 
 def dt_iso(dt: datetime) -> str:

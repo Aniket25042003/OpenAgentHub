@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = "*"
     max_archive_bytes: int = 250 * 1024 * 1024
+    max_archive_uncompressed_bytes: int = 512 * 1024 * 1024
+    max_archive_entries: int = 10_000
+    publish_quota_new_account_daily: int = 10
+    publish_quota_new_account_days: int = 7
+    publish_per_ip_per_hour: int = 120
+    reserved_namespace_prefixes: str = "openagenthub-,oah-,github-,google-,microsoft-,meta-,anthropic-,openai-"
     outbox_poll_interval_seconds: float = 1.0
 
     @property

@@ -1,3 +1,6 @@
+from datetime import datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
@@ -20,3 +23,9 @@ class AuditRepository:
         self.session.add(event)
         await self.session.flush()
         return event
+
+    async def count_by_action(self, *, actor_id: int, action: str, since: datetime) -> int:
+        stmt = select(func.count(AuditEvent.id)).where(
+            AuditEvent.actor_id == actor_id, AuditEvent.action == action, AuditEvent.created_at >= since
+        )
+        return (await self.session.execute(stmt)).scalar_one()

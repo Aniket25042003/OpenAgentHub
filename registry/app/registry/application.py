@@ -1,5 +1,7 @@
 import json
+import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,14 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.repositories import AuditRepository
 from app.config import get_settings
 from app.crypto import SignatureError, sha256_hex, verify_signature
-from app.identity.models import User
+from app.entitlements.application import QuotaExceeded, check_publish_quota
+from app.identity.models import SigningKey, User
+from app.identity.repositories import SigningKeyRepository, UserRepository
 from app.outbox.repositories import OutboxRepository
-from app.registry.models import Agent, AgentVersion
-from app.registry.repositories import AgentRepository, VersionRepository
-from app.schemas import AgentSummary, AgentVersionDetail, SignatureFile, SecurityReport, dt_iso
+from app.registry.models import Agent, AgentVersion, Namespace
+from app.registry.repositories import AgentRepository, NamespaceRepository, VersionRepository
+from app.schemas import AgentSummary, AgentVersionDetail, SignatureFile, SecurityReport, SignerKeyInfo, dt_iso
 from app.security_review.adapters import RegistryScanStore
 from app.security_review.application import ScanTarget, run_scan
-from app.security_review.scanning import manifest_from_archive
+from app.security_review.scanning import manifest_from_archive, validate_manifest_schema
 from app.store import ArchiveStore, ArchiveStoreError
 
 TRUST_DEFAULT = "unknown"
@@ -52,6 +56,30 @@ class ArchiveTooLarge(RegistryError):
     pass
 
 
+class SigningKeyForbidden(RegistryError):
+    pass
+
+
+class NamespaceForbidden(RegistryError):
+    pass
+
+
+class NamespaceReserved(RegistryError):
+    pass
+
+
+class NamespaceConflict(RegistryError):
+    pass
+
+
+class NamespaceNotFound(RegistryError):
+    pass
+
+
+class MaintainerNotFound(RegistryError):
+    pass
+
+
 @dataclass(frozen=True)
 class PublishResult:
     security: str
@@ -74,7 +102,8 @@ def _summary(agent: Agent, version: AgentVersion | None, downloads: int) -> Agen
     )
 
 
-def _detail(version: AgentVersion, agent: Agent) -> AgentVersionDetail:
+def _detail(version: AgentVersion, agent: Agent, signer_key: SigningKey | None) -> AgentVersionDetail:
+    signer_info = SignerKeyInfo.from_key(signer_key) if signer_key is not None else None
     return AgentVersionDetail(
         name=f"{agent.namespace}/{agent.name}",
         version=version.version,
@@ -86,7 +115,16 @@ def _detail(version: AgentVersion, agent: Agent) -> AgentVersionDetail:
         trust="untrusted" if version.security_status == "flagged" else TRUST_DEFAULT,
         signature=SignatureFile(**version.signature),
         security=SecurityReport(status=version.security_status, findings=version.security_findings),
+        yanked=version.yanked,
+        signerKey=signer_info,
     )
+
+
+async def _signer_key(session: AsyncSession, version: AgentVersion) -> SigningKey | None:
+    fingerprint = version.signature.get("publicKeyId")
+    if not fingerprint:
+        return None
+    return await SigningKeyRepository(session).by_fingerprint(fingerprint)
 
 
 async def _resolve_version(session: AsyncSession, agent: Agent, version: str) -> AgentVersion | None:
@@ -152,7 +190,8 @@ async def get_version_detail(session: AsyncSession, namespace: str, name: str, v
     ver = await _resolve_version(session, agent, version)
     if ver is None:
         raise VersionNotFound("version not found")
-    return _detail(ver, agent)
+    signer = await _signer_key(session, ver)
+    return _detail(ver, agent, signer)
 
 
 async def download_archive(session: AsyncSession, namespace: str, name: str, version: str) -> bytes:
@@ -167,6 +206,52 @@ async def download_archive(session: AsyncSession, namespace: str, name: str, ver
         raise ArchiveMissing("archive missing on server")
     await VersionRepository(session).increment_download(ver)
     return data
+
+
+def _is_reserved_namespace(name: str) -> bool:
+    settings = get_settings()
+    lowered = name.lower()
+    return any(
+        lowered == prefix.rstrip("-") or lowered.startswith(prefix)
+        for prefix in settings.reserved_namespace_prefixes.split(",")
+        if prefix
+    )
+
+
+async def _check_signing_key(session: AsyncSession, user: User, sig: SignatureFile) -> SigningKey:
+    key = await SigningKeyRepository(session).by_fingerprint(sig.publicKeyId)
+    if key is None:
+        raise SigningKeyForbidden("signature key is not registered to this registry")
+    if key.user_id != user.id:
+        raise SigningKeyForbidden("signature key is not registered to your account")
+    now = datetime.now(timezone.utc)
+    if key.revoked_at is not None:
+        raise SigningKeyForbidden("signature key has been revoked")
+    if key.expires_at is not None and key.expires_at.replace(tzinfo=timezone.utc) <= now:
+        raise SigningKeyForbidden("signature key has expired")
+    key.last_used_at = now
+    return key
+
+
+async def _resolve_publish_namespace(session: AsyncSession, user: User, namespace: str) -> Namespace:
+    repo = NamespaceRepository(session)
+    ns = await repo.by_name(namespace)
+    if ns is None:
+        if _is_reserved_namespace(namespace):
+            raise NamespaceReserved(f"namespace '{namespace}' is reserved")
+        ns = await repo.create(name=namespace, owner_id=user.id)
+        await AuditRepository(session).record(
+            actor_id=user.id,
+            action="namespace.claimed",
+            target_type="namespace",
+            target_id=ns.id,
+            detail={"name": namespace},
+        )
+        return ns
+    member = await repo.is_member(ns, user.id)
+    if member is None:
+        raise NamespaceForbidden(f"you are not a member of namespace '{namespace}'")
+    return ns
 
 
 async def publish_version(
@@ -190,6 +275,8 @@ async def publish_version(
     except Exception as exc:  # noqa: BLE001
         raise InvalidSignatureFile(f"invalid signature file: {exc}") from exc
 
+    await _check_signing_key(session, user, sig)
+
     try:
         verify_signature(sig, archive_data)
     except SignatureError as exc:
@@ -201,9 +288,16 @@ async def publish_version(
     if sig.version != version:
         raise InvalidPayload("signature version does not match route")
 
-    manifest = manifest_from_archive(archive_data)
+    try:
+        manifest = manifest_from_archive(archive_data)
+        validate_manifest_schema(manifest)
+    except ValueError as exc:
+        raise InvalidPayload(str(exc)) from exc
     if manifest.get("name") != manifest_name or manifest.get("version") != version:
         raise InvalidPayload("manifest does not match signature")
+
+    await check_publish_quota(session, user)
+    await _resolve_publish_namespace(session, user, namespace)
 
     framework_raw = manifest.get("framework")
     framework = framework_raw.get("name") if isinstance(framework_raw, dict) else framework_raw
@@ -277,3 +371,69 @@ async def trigger_rescan(session: AsyncSession, namespace: str, name: str, versi
         )
     except ScanTargetMissing as exc:
         raise VersionNotFound(str(exc)) from exc
+
+
+async def claim_namespace(session: AsyncSession, user: User, name: str) -> Namespace:
+    if not re.match(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", name) or len(name) > 64:
+        raise RegistryError("namespace must be a lowercase slug of at most 64 characters")
+    if _is_reserved_namespace(name):
+        raise NamespaceReserved(f"namespace '{name}' is reserved")
+    repo = NamespaceRepository(session)
+    if await repo.by_name(name) is not None:
+        raise NamespaceConflict(f"namespace '{name}' already exists")
+    ns = await repo.create(name=name, owner_id=user.id)
+    await AuditRepository(session).record(
+        actor_id=user.id,
+        action="namespace.claimed",
+        target_type="namespace",
+        target_id=ns.id,
+        detail={"name": name},
+    )
+    return ns
+
+
+async def add_namespace_maintainer(
+    session: AsyncSession, user: User, namespace: str, username: str, role: str
+) -> dict:
+    if role not in ("owner", "maintainer"):
+        raise RegistryError("role must be 'owner' or 'maintainer'")
+    repo = NamespaceRepository(session)
+    ns = await repo.by_name(namespace)
+    if ns is None:
+        raise NamespaceNotFound(f"namespace '{namespace}' not found")
+    actor_member = await repo.is_member(ns, user.id)
+    if actor_member is None or actor_member.role != "owner":
+        raise NamespaceForbidden(f"only the owner of '{namespace}' can manage maintainers")
+    target = await UserRepository(session).by_username(username)
+    if target is None:
+        raise MaintainerNotFound(f"user '{username}' not found")
+    if await repo.is_member(ns, target.id) is not None:
+        raise NamespaceConflict(f"user '{username}' is already a member")
+    member = await repo.add_member(ns, target.id, role)
+    await AuditRepository(session).record(
+        actor_id=user.id,
+        action="namespace.maintainer.added",
+        target_type="namespace_member",
+        target_id=member.id,
+        detail={"namespace": namespace, "username": username, "role": role},
+    )
+    return {"namespace": namespace, "username": username, "role": role}
+
+
+async def yank_version(session: AsyncSession, user: User, namespace: str, name: str, version: str, yanked: bool) -> bool:
+    agent = await AgentRepository(session).by_namespace_name(namespace, name)
+    if agent is None:
+        raise AgentNotFound("agent not found")
+    ver = await _resolve_version(session, agent, version)
+    if ver is None:
+        raise VersionNotFound("version not found")
+    changed = VersionRepository(session).set_yanked(ver, yanked)
+    if changed:
+        await AuditRepository(session).record(
+            actor_id=user.id,
+            action="version.yanked" if yanked else "version.unyanked",
+            target_type="agent_version",
+            target_id=ver.id,
+            detail={"namespace": namespace, "name": name, "version": version},
+        )
+    return changed

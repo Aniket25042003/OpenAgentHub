@@ -21,6 +21,11 @@ jobs:
         run: uv sync --extra dev
       - name: Run tests
         run: uv run pytest -q
+      - name: Check canonical manifest schema drift
+        run: |
+          cmp -s app/security_review/agent.schema.json ../specs/agent.schema.json \
+            && cmp -s app/security_review/agent.schema.json ../sdk/src/schema/agent.schema.json \
+            || { echo "canonical manifest schema copies diverged from specs/agent.schema.json"; exit 1; }
       - name: Check OpenAPI contract drift
         run: |
           uv run python scripts/export_openapi.py
