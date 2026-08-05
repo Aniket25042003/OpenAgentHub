@@ -104,6 +104,44 @@ class SearchResponse(BaseModel):
     items: list[AgentSummary]
 
 
+class CatalogItem(BaseModel):
+    namespace: str
+    name: str
+    version: str
+    digest: str
+    author: str
+    description: str
+    license: str
+    framework: str | None = None
+    models: list[str]
+    tags: list[str]
+    runtime: str | None = None
+    interfaces: list[str] = []
+    permissions: list[str] = []
+    secrets: list[str] = []
+    downloads: int
+    publisher: str
+    signerVerified: bool = False
+    reviewStatus: str = "pending"
+    securityStatus: str = "pending"
+    yanked: bool = False
+    publishedAt: str
+    reviewedAt: str | None = None
+
+
+class CatalogCursor(BaseModel):
+    key: str
+    version: str
+    id: int
+
+
+class CatalogResponse(BaseModel):
+    schemaVersion: int = 1
+    watermark: str
+    items: list[CatalogItem] | None = None
+    nextCursor: str | None = None
+
+
 class VersionsResponse(BaseModel):
     versions: list[str]
 

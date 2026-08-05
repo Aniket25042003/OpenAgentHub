@@ -24,3 +24,23 @@ def semver_key(version: str) -> tuple[list[tuple[int, int | str]], tuple[int, st
     if pre is None:
         return (_parts(version), (1, ""))
     return (_parts(version), (0, pre))
+
+
+def sort_key(version: str) -> str:
+    """Collateable string that orders identically to :func:`semver_key`.
+
+    Numeric segments are zero-padded so lexical string comparison matches
+    numeric ordering; prerelease versions sort before the release of the same
+    core. Used for the SQL ``sort_key`` column so latest-per-agent queries can
+    run inside the database instead of loading every version into Python.
+    """
+    core = version.split("-", 1)[0]
+    parts: list[str] = []
+    for p in core.split("."):
+        if p.isdigit():
+            parts.append(f"n{int(p):012d}")
+        else:
+            parts.append(f"s{p}")
+    pre = version.split("-", 1)[1] if "-" in version else None
+    pre_tag = "1" if pre is None else "0" + pre
+    return "".join(parts) + "#" + pre_tag

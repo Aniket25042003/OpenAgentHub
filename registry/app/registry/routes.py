@@ -1,12 +1,20 @@
+import json
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session
+from app.ratelimit import RateLimitRule, enforce
 from app.entitlements.application import QuotaExceeded, check_publish_rate
 from app.identity.application import require_active_user, require_reviewer_or_admin
 from app.registry import application
+from app.registry.catalog import CatalogQueryError, load_catalog_page
+from app.registry.cache import get_catalog_cache
+from app.registry.downloads import get_download_buffer
+from app.registry.repositories import CatalogRepository
 from app.registry.application import (
     AgentNotFound,
     ArchiveMissing,
@@ -28,6 +36,7 @@ from app.registry.application import (
 from app.schemas import (
     AgentSummary,
     AgentVersionDetail,
+    CatalogResponse,
     MaintainerAddRequest,
     NamespaceClaimRequest,
     ReviewRequest,
@@ -40,8 +49,104 @@ from app.schemas import (
 router = APIRouter(prefix="/api/v1")
 
 
+def _write_limits(request: Request, user) -> None:
+    settings = get_settings()
+    enforce(
+        request,
+        ip_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
+        account_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
+        account_key=str(user.id),
+    )
+
+
+@router.get("/catalog", response_model=CatalogResponse, response_model_exclude_none=True)
+async def catalog(
+    request: Request,
+    q: str | None = None,
+    framework: str | None = None,
+    models: str | None = None,
+    tags: str | None = None,
+    review_status: str | None = None,
+    security_status: str | None = None,
+    permission: str | None = None,
+    runtime: str | None = None,
+    publisher_status: str | None = None,
+    cursor: str | None = None,
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
+
+    params = {
+        "q": q,
+        "framework": framework,
+        "models": models,
+        "tags": tags,
+        "review_status": review_status,
+        "security_status": security_status,
+        "permission": permission,
+        "runtime": runtime,
+        "publisher_status": publisher_status,
+        "cursor": cursor,
+        "limit": limit,
+    }
+    cache = get_catalog_cache()
+    key = cache.cache_key(params)
+    try:
+        watermark = await CatalogRepository(session).watermark()
+        entry = cache.get(key, watermark)
+        if entry is None:
+            page = await load_catalog_page(
+                session,
+                q=q,
+                framework=framework,
+                models=models,
+                tags=tags,
+                review_status=review_status,
+                security_status=security_status,
+                permission=permission,
+                runtime=runtime,
+                publisher_status=publisher_status,
+                cursor_raw=cursor,
+                limit=limit,
+            )
+            payload = CatalogResponse(
+                schemaVersion=1,
+                watermark=watermark,
+                items=[i.model_dump(mode="json") for i in page.items],
+                nextCursor=page.next_cursor,
+            ).model_dump(mode="json")
+            entry = cache.put(key, watermark, payload)
+    except CatalogQueryError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:  # noqa: BLE001
+        stale = cache.stale(key)
+        if stale is not None:
+            return Response(
+                content=json.dumps(stale.payload),
+                media_type="application/json",
+                headers={
+                    "ETag": stale.etag,
+                    "Cache-Control": f"public, max-age={settings.catalog_cache_ttl_seconds}",
+                    "X-Catalog-Stale": "true",
+                    "Age": str(int(time.time() - stale.cached_at)),
+                },
+            )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="catalog temporarily unavailable") from None
+
+    headers = {
+        "ETag": entry.etag,
+        "Cache-Control": f"public, max-age={settings.catalog_cache_ttl_seconds}",
+    }
+    if request.headers.get("if-none-match") == entry.etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(content=json.dumps(entry.payload), media_type="application/json", headers=headers)
+
+
 @router.get("/agents", response_model=SearchResponse)
 async def search_agents(
+    request: Request,
     q: str | None = None,
     framework: str | None = None,
     tags: str | None = None,
@@ -51,6 +156,8 @@ async def search_agents(
     offset: int = 0,
     session: AsyncSession = Depends(get_session),
 ):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     items = await application.search_agents(
         session, q=q, framework=framework, tags=tags, models=models, sort=sort, limit=limit, offset=offset
     )
@@ -58,7 +165,9 @@ async def search_agents(
 
 
 @router.get("/agents/{namespace}/{name}", response_model=AgentSummary)
-async def get_agent(namespace: str, name: str, session: AsyncSession = Depends(get_session)):
+async def get_agent(namespace: str, name: str, request: Request, session: AsyncSession = Depends(get_session)):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     try:
         return await application.get_agent_summary(session, namespace, name)
     except AgentNotFound as exc:
@@ -66,7 +175,9 @@ async def get_agent(namespace: str, name: str, session: AsyncSession = Depends(g
 
 
 @router.get("/agents/{namespace}/{name}/versions", response_model=VersionsResponse)
-async def list_versions(namespace: str, name: str, session: AsyncSession = Depends(get_session)):
+async def list_versions(namespace: str, name: str, request: Request, session: AsyncSession = Depends(get_session)):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     try:
         versions = await application.list_versions(session, namespace, name)
     except AgentNotFound as exc:
@@ -75,7 +186,9 @@ async def list_versions(namespace: str, name: str, session: AsyncSession = Depen
 
 
 @router.get("/agents/{namespace}/{name}/versions/{version}", response_model=AgentVersionDetail)
-async def get_version(namespace: str, name: str, version: str, session: AsyncSession = Depends(get_session)):
+async def get_version(namespace: str, name: str, version: str, request: Request, session: AsyncSession = Depends(get_session)):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     try:
         return await application.get_version_detail(session, namespace, name, version)
     except AgentNotFound as exc:
@@ -85,9 +198,11 @@ async def get_version(namespace: str, name: str, version: str, session: AsyncSes
 
 
 @router.get("/agents/{namespace}/{name}/versions/{version}/archive")
-async def download_archive(namespace: str, name: str, version: str, session: AsyncSession = Depends(get_session)):
+async def download_archive(namespace: str, name: str, version: str, request: Request, session: AsyncSession = Depends(get_session)):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.downloads_per_minute_by_ip, 60))
     try:
-        data = await application.download_archive(session, namespace, name, version)
+        data, version_id = await application.download_archive(session, namespace, name, version)
     except AgentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except VersionNotFound as exc:
@@ -96,7 +211,7 @@ async def download_archive(namespace: str, name: str, version: str, session: Asy
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ArchiveMissing as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    await session.commit()
+    get_download_buffer().record(version_id)
     return Response(content=data, media_type="application/octet-stream", headers={"X-Content-Type-Options": "nosniff"})
 
 
@@ -117,6 +232,7 @@ async def publish_version(
     session: AsyncSession = Depends(get_session),
     user = Depends(require_active_user),
 ):
+    _write_limits(request, user)
     try:
         check_publish_rate(request.client.host if request.client else "unknown")
     except QuotaExceeded as exc:
@@ -164,9 +280,11 @@ async def trigger_scan(
     namespace: str,
     name: str,
     version: str,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user = Depends(require_active_user),
 ):
+    _write_limits(request, user)
     try:
         scan_status, findings = await application.trigger_rescan(session, namespace, name, version)
     except VersionNotFound as exc:
@@ -185,9 +303,11 @@ async def review_version(
     name: str,
     version: str,
     req: ReviewRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user = Depends(require_reviewer_or_admin),
 ):
+    _write_limits(request, user)
     try:
         result = await application.review_version(
             session, user, namespace=namespace, name=name, version=version, action=req.action, reason=req.reason, notes=req.notes
@@ -205,9 +325,11 @@ async def review_version(
 @router.post("/namespaces")
 async def claim_namespace(
     req: NamespaceClaimRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user = Depends(require_active_user),
 ):
+    _write_limits(request, user)
     try:
         ns = await application.claim_namespace(session, user, req.name)
     except (NamespaceConflict, NamespaceReserved, RegistryError) as exc:
@@ -225,9 +347,11 @@ async def claim_namespace(
 async def add_maintainer(
     namespace: str,
     req: MaintainerAddRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user = Depends(require_active_user),
 ):
+    _write_limits(request, user)
     try:
         result = await application.add_namespace_maintainer(session, user, namespace, req.username, req.role)
     except (NamespaceNotFound, MaintainerNotFound) as exc:
@@ -249,9 +373,11 @@ async def yank_version(
     name: str,
     version: str,
     req: YankRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user = Depends(require_reviewer_or_admin),
 ):
+    _write_limits(request, user)
     try:
         changed = await application.yank_version(session, user, namespace, name, version, req.yanked)
     except AgentNotFound as exc:

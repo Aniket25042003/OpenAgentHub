@@ -14,7 +14,7 @@ from app.identity.models import SigningKey, User
 from app.identity.repositories import SigningKeyRepository, UserRepository
 from app.outbox.repositories import OutboxRepository
 from app.registry.models import Agent, AgentVersion, BLOCKED_REVIEW_STATUSES, Namespace
-from app.registry.repositories import AgentRepository, NamespaceRepository, VersionRepository
+from app.registry.repositories import AgentRepository, CatalogRepository, NamespaceRepository, VersionRepository
 from app.schemas import AgentSummary, AgentVersionDetail, RevocationItem, SignatureFile, SecurityReport, SignerKeyInfo, dt_iso
 from app.security_review.adapters import RegistryScanStore
 from app.security_review.application import ScanTarget, run_scan
@@ -154,6 +154,11 @@ async def _resolve_version(session: AsyncSession, agent: Agent, version: str) ->
     return await repo.by_agent_and_version(agent, version)
 
 
+async def bump_catalog(session: AsyncSession) -> None:
+    """Bump the catalog watermark inside a catalog-affecting transaction."""
+    await CatalogRepository(session).bump()
+
+
 async def search_agents(
     session: AsyncSession,
     *,
@@ -169,7 +174,7 @@ async def search_agents(
     offset = max(0, offset)
     agent_repo = AgentRepository(session)
     agents = await agent_repo.search(q=q, framework=framework, tags=tags, models=models)
-    latest = await agent_repo.latest_versions()
+    latest = await agent_repo.latest_visible_versions()
     items: list[AgentSummary] = []
     for agent in agents:
         ver = latest.get(agent.id)
@@ -222,7 +227,7 @@ def _blocked_download_reason(ver: AgentVersion) -> str | None:
     return None
 
 
-async def download_archive(session: AsyncSession, namespace: str, name: str, version: str) -> bytes:
+async def download_archive(session: AsyncSession, namespace: str, name: str, version: str) -> tuple[bytes, int]:
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None:
         raise AgentNotFound("agent not found")
@@ -235,8 +240,7 @@ async def download_archive(session: AsyncSession, namespace: str, name: str, ver
     data = await ArchiveStore().get(namespace, name, ver.version)
     if data is None:
         raise ArchiveMissing("archive missing on server")
-    await VersionRepository(session).increment_download(ver)
-    return data
+    return data, ver.id
 
 
 def _is_reserved_namespace(name: str) -> bool:
@@ -392,6 +396,7 @@ async def publish_version(
     await AuditRepository(session).record(
         actor_id=user.id, action="version.published", target_type="agent_version", target_id=ver.id
     )
+    await bump_catalog(session)
     return PublishResult(security=security_status, findings=findings)
 
 
@@ -462,6 +467,7 @@ async def review_version(
         target_id=ver.id,
         detail={"namespace": namespace, "name": name, "version": version, "action": action, "status": status},
     )
+    await bump_catalog(session)
     return {
         "namespace": namespace,
         "name": name,
@@ -558,4 +564,5 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
             target_id=ver.id,
             detail={"namespace": namespace, "name": name, "version": version},
         )
+        await bump_catalog(session)
     return changed

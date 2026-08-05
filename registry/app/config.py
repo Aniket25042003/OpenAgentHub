@@ -29,11 +29,26 @@ class Settings(BaseSettings):
     outbox_poll_interval_seconds: float = 1.0
     rescan_cooldown_seconds: float = 10.0
 
+    rate_limit_store: str = "memory"
+    redis_url: str = ""
+    trusted_proxies: str = ""
+    anonymous_reads_per_minute: int = 300
+    ip_writes_per_hour: int = 60
+    account_writes_per_hour: int = 600
+    downloads_per_minute_by_ip: int = 8
+    download_bytes_per_hour_by_ip: int = 2 * 1024 * 1024 * 1024
+    download_flush_seconds: float = 60.0
+    catalog_cache_ttl_seconds: int = 30
+
     @property
     def cors_origin_list(self) -> list[str]:
         if self.cors_origins.strip() == "*":
             return ["*"]
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def trusted_proxy_set(self) -> set[str]:
+        return {p.strip() for p in self.trusted_proxies.split(",") if p.strip()}
 
 
 @lru_cache

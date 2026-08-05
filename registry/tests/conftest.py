@@ -19,10 +19,14 @@ from app.main import create_app  # noqa: E402
 async def _database():
     from app.db import dispose_db, reset_db
     from app.entitlements.application import reset_publish_limits
+    from app.ratelimit import reset_rate_limiter
+    from app.registry.cache import reset_catalog_cache
     from app.telemetry import metrics
 
     metrics.reset()
     reset_publish_limits()
+    reset_rate_limiter()
+    reset_catalog_cache()
     await reset_db()
     yield
     await dispose_db()
