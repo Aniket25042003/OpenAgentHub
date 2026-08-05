@@ -53,6 +53,8 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - name: Build TS workspaces (sdk/runtime dist needed by web)
+        run: npm run build
       - name: Build web (Next.js standalone)
         run: npm run build -w @openagenthub/web
       - name: Pack npm artifact
