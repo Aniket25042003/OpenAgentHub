@@ -25,6 +25,9 @@
       },
       "runtime": {
         "description": "Detect local runtimes"
+      },
+      "dashboard": {
+        "description": "Manage the local control plane (dashboard daemon)"
       }
     }
   },

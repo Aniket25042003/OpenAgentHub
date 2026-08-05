@@ -47,6 +47,14 @@ CI: 80 MiB soft / 120 MiB hard.
 | `openagenthub runtime` | Detect local runtimes/tooling |
 | `openagenthub status` | System + agent diagnostics: host, docker, registry, installed agents, detected third-party agents (`--json`, `--all`) |
 | `openagenthub ps` | List Docker containers (`--all` for every container, default OpenAgentHub's own sandbox containers) |
+| `openagenthub` (bare) | Start the local control plane (if needed) and open the dashboard in the browser |
+| `openagenthub dashboard open` | Start the control plane if needed and open the dashboard in the browser |
+| `openagenthub dashboard start` | Start the control plane without opening a browser |
+| `openagenthub dashboard stop` | Stop the control plane (SIGTERM; waits for the process to exit) |
+| `openagenthub dashboard restart` | Stop then start the control plane |
+| `openagenthub dashboard status` | Show control-plane state: pid, port, versions, health (`--json`) |
+| `openagenthub dashboard logs` | Tail control-plane logs (`-n <lines>`, `-f` follow) |
+| `openagenthub dashboard autostart on\|off` | launchd (macOS) / systemd-user (Linux) autostart; `status` reports state |
 
 Run `openagenthub --help` / `openagenthub <cmd> --help` for flags. See
 [commands.md](commands.md) for details.
@@ -67,6 +75,18 @@ cli/src/
 
 ## Key behaviors
 
+- **Local control plane**: `openagenthub` (bare) and `dashboard` commands run a
+  detached loopback daemon that serves the bundled Next.js dashboard and the
+  local API. The daemon persists PID, process start identity, port, versions
+  and health under `$AGENT_HOME/control-plane/` (atomic state writes, startup
+  lock, log rotation at 5 MiB / 3 files). A stale or reused PID is never
+  signaled unless its start identity matches; port collisions fall back to a
+  free alternate port; a daemon on an older protocol/version is restarted
+  automatically. The local API is loopback-only, versioned (`/api/local/v1`),
+  and protected by a random per-machine token (`Authorization: Bearer`, file
+  mode 0600) plus `Host`/`Origin` validation. `OPENAGENTHUB_NO_DAEMON=1`
+  disables the control plane entirely (CI and the e2e script run this way);
+  one-shot commands never open a browser.
 - **Error exit codes**: `this.error(msg)` exits **2** by default (oclif). All
   user-facing failures use `{ exit: 1 }` — the e2e script and CI rely on this.
 - **stdin piping**: `openagenthub run ns/name` forwards piped stdin to the agent when
@@ -82,5 +102,9 @@ cli/src/
 
 ## Tests
 
-`node --test "test/*.test.ts"` from `cli/` (quoted glob). 14 tests, including
-the stdin-piping regression test. Tests run against a temp `AGENT_HOME`.
+`node --test "test/*.test.ts"` from `cli/` (quoted glob). 28 tests, including
+the stdin-piping regression test and the control-plane suite (state, locking,
+identity, port selection, log rotation, daemon spawn/restart integration).
+Tests run against a temp `AGENT_HOME`; the daemon integration tests require
+`cli/dashboard/server.js` (skip otherwise) and are skipped when
+`OPENAGENTHUB_NO_DAEMON=1` is set.
