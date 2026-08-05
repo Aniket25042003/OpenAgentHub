@@ -2,7 +2,40 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.registry.models import Agent, AgentVersion
+from app.registry.models import Agent, AgentVersion, Namespace, NamespaceMember
+
+
+class NamespaceRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def by_name(self, name: str) -> Namespace | None:
+        return (
+            await self.session.execute(select(Namespace).where(Namespace.name == name))
+        ).scalar_one_or_none()
+
+    async def create(self, *, name: str, owner_id: int) -> Namespace:
+        namespace = Namespace(name=name)
+        self.session.add(namespace)
+        await self.session.flush()
+        self.session.add(
+            NamespaceMember(namespace_id=namespace.id, user_id=owner_id, role="owner")
+        )
+        return namespace
+
+    async def is_member(self, namespace: Namespace, user_id: int) -> NamespaceMember | None:
+        return (
+            await self.session.execute(
+                select(NamespaceMember).where(
+                    NamespaceMember.namespace_id == namespace.id, NamespaceMember.user_id == user_id
+                )
+            )
+        ).scalar_one_or_none()
+
+    async def add_member(self, namespace: Namespace, user_id: int, role: str) -> NamespaceMember:
+        member = NamespaceMember(namespace_id=namespace.id, user_id=user_id, role=role)
+        self.session.add(member)
+        return member
 
 
 class AgentRepository:
@@ -144,3 +177,9 @@ class VersionRepository:
 
     async def increment_download(self, version: AgentVersion) -> None:
         version.download_count += 1
+
+    def set_yanked(self, version: AgentVersion, yanked: bool) -> bool:
+        if version.yanked == yanked:
+            return False
+        version.yanked = yanked
+        return True

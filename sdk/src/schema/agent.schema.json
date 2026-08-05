@@ -111,7 +111,15 @@
       "type": "array",
       "items": { "enum": ["filesystem", "network", "github", "terminal", "browser", "camera", "microphone", "none"] },
       "uniqueItems": true,
-      "description": "Capabilities the agent requests. 'none' must not be combined with others."
+      "description": "Capabilities the agent requests. 'none' must not be combined with others.",
+      "allOf": [
+        {
+          "anyOf": [
+            { "not": { "contains": { "const": "none" } } },
+            { "items": { "const": "none" } }
+          ]
+        }
+      ]
     },
     "dependencies": {
       "type": "object",

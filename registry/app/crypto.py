@@ -40,6 +40,9 @@ def verify_signature(sig: SignatureFile, archive: bytes) -> None:
     actual = sha256_hex(archive)
     if actual != sig.sha256:
         raise SignatureError(f"sha256 mismatch: archive is {actual}, signature says {sig.sha256}")
+    expected_id = public_key_fingerprint(sig.publicKey)
+    if sig.publicKeyId != expected_id:
+        raise SignatureError("public key fingerprint mismatch")
     pub = load_ed25519_public_key(sig.publicKey)
     try:
         pub.verify(base64.b64decode(sig.signature), signature_payload(sig.name, sig.version, sig.sha256).encode("utf-8"))

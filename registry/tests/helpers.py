@@ -77,7 +77,7 @@ def hello_manifest(name: str, version: str, **overrides) -> dict:
         "license": "MIT",
         "runtime": {"language": "python"},
         "models": {"supported": ["local"]},
-        "permissions": {"network": False, "filesystem": False},
+        "permissions": ["network", "filesystem"],
         "interfaces": {"cli": {"command": "python app.py"}},
         "tags": ["demo"],
     }

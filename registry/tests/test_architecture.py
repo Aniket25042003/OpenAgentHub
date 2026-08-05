@@ -112,7 +112,7 @@ def test_openapi_exposes_all_router_paths():
 def test_module_tables_are_owned_by_their_module():
     ownership = {
         "identity": ("users", "signing_keys"),
-        "registry": ("agents", "agent_versions"),
+        "registry": ("agents", "agent_versions", "namespaces", "namespace_members"),
         "audit": ("audit_events",),
         "outbox": ("outbox_events", "queue_jobs"),
     }
@@ -125,8 +125,10 @@ def test_module_tables_are_owned_by_their_module():
 
 ALLOWED_CROSS_MODULE = {
     "security_review/adapters.py": {"registry"},
-    "registry/application.py": {"security_review", "audit", "outbox", "identity"},
-    "registry/routes.py": {"identity"},
+    "registry/application.py": {"security_review", "audit", "outbox", "identity", "entitlements"},
+    "registry/routes.py": {"identity", "entitlements"},
+    "entitlements/application.py": {"audit", "identity"},
+    "identity/application.py": {"audit"},
     "workers/scan.py": {"security_review", "outbox"},
     "workers/notifications.py": {"outbox"},
     "workers/billing.py": {"outbox"},
