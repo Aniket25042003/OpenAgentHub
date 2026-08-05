@@ -49,11 +49,14 @@ Per-command behavior. Flags shown are the ones that matter; run
 - Prompts for each declared permission unless `--yes`/`--no-permissions`.
 - Stores `signature.sig.json` + `archive.ahb` in the installed dir (used by
   `agent verify`).
+- **Reinstall guard**: installing an already-present exact version fails with
+  a `--force` hint; `--force` reinstalls over it.
 
 ## `agent update ns/name`
 
-- Lists published versions, installs the newest via `installAgent`.
-- Flags: `--registry`, `--yes`.
+- Resolves `latest` on the server (highest semver, not newest publish) and
+  installs that version; prints `latest version of ns/name: X.Y.Z`.
+- Flags: `--registry`, `--yes`. Always overwrites the target version (force).
 
 ## `agent list`
 
@@ -64,6 +67,8 @@ Per-command behavior. Flags shown are the ones that matter; run
 
 - Removes the installed directory, drops `installed`/`permissions` records,
   and deletes the agent's vault secrets.
+- Without `@version`: removes the only installed version; refuses when
+  multiple versions are installed (requires `@version` to be explicit).
 
 ## `agent run ns/name[@version]`
 
@@ -71,6 +76,8 @@ Per-command behavior. Flags shown are the ones that matter; run
   (`cli`|`mcp`|`http`, default cli), `--input JSON`, `--interactive`,
   `--timeout ms` (default 120_000), `--agent-home`, `--allow-secrets`.
 - Requires the agent to be installed (suggests `agent install ...`).
+- With no `@version`, resolves to the **highest installed version** when
+  several are present (a note names the version being run).
 - Reads **piped stdin** when `--input` absent and stdin isn't a TTY.
 - Constructs `AgentRuntime(vault)`, calls `runAgent` with the *effective*
   permission set (saved ∩ manifest — tampered saved grants refuse to start),

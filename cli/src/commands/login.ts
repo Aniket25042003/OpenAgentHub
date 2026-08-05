@@ -15,7 +15,13 @@ export default class Login extends Command {
     if (!flags.token) {
       this.error("no token provided. Pass one with --token (a GitHub personal access token)", { exit: 1 });
     }
-    const config = loadConfig();
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
     config.registryUrl = flags.registry;
     config.token = flags.token;
     saveConfig(config);

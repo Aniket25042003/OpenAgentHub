@@ -31,6 +31,7 @@ export interface InstallOptions {
   forceYes: boolean;
   noPermissions: boolean;
   registryUrl?: string;
+  force?: boolean;
 }
 
 export interface ResolvedPackage {
@@ -124,6 +125,13 @@ export async function installAgent(
   const manifest = resolved.manifest;
   if (manifest.name !== `${namespace}/${name}`) {
     throw new Error(`manifest name '${manifest.name}' does not match requested spec '${namespace}/${name}'`);
+  }
+
+  const already = config.installed?.[`${namespace}/${name}@${manifest.version}`];
+  if (already && !opts.force) {
+    throw new Error(
+      `${namespace}/${name}@${manifest.version} is already installed (reinstall with: agent install ${namespace}/${name}@${manifest.version} --force)`,
+    );
   }
 
   console.log(`agent: ${manifest.name}@${manifest.version}`);

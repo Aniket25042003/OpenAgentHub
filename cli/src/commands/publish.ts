@@ -16,7 +16,13 @@ export default class Publish extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Publish);
-    const config = loadConfig();
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
     const registryUrl = flags.registry ?? config.registryUrl ?? REGISTRY_DEFAULT;
 
     const projectDir = resolve(args.path ?? ".");

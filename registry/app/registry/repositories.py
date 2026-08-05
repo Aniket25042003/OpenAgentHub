@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.registry.models import Agent, AgentVersion, Namespace, NamespaceMember, VersionReviewEvent
+from app.registry.semver import semver_key
 
 
 class NamespaceRepository:
@@ -101,10 +102,12 @@ class AgentRepository:
         return (await self.session.execute(stmt)).scalars().all()
 
     async def latest_versions(self) -> dict[int, AgentVersion]:
-        versions = await self.session.execute(select(AgentVersion).order_by(AgentVersion.published_at.desc()))
+        versions = (await self.session.execute(select(AgentVersion))).scalars().all()
         latest: dict[int, AgentVersion] = {}
-        for v in versions.scalars():
-            latest.setdefault(v.agent_id, v)
+        for v in versions:
+            cur = latest.get(v.agent_id)
+            if cur is None or (semver_key(v.version), v.published_at) > (semver_key(cur.version), cur.published_at):
+                latest[v.agent_id] = v
         return latest
 
 
@@ -127,18 +130,18 @@ class VersionRepository:
         ).scalar_one_or_none()
 
     async def latest(self, agent: Agent) -> AgentVersion | None:
-        return (
-            await self.session.execute(
-                select(AgentVersion).where(AgentVersion.agent_id == agent.id).order_by(AgentVersion.published_at.desc())
-            )
-        ).scalars().first()
+        versions = (
+            await self.session.execute(select(AgentVersion).where(AgentVersion.agent_id == agent.id))
+        ).scalars().all()
+        if not versions:
+            return None
+        return max(versions, key=lambda v: (semver_key(v.version), v.published_at))
 
     async def list_for(self, agent: Agent) -> list[AgentVersion]:
-        return (
-            await self.session.execute(
-                select(AgentVersion).where(AgentVersion.agent_id == agent.id).order_by(AgentVersion.published_at.desc())
-            )
+        versions = (
+            await self.session.execute(select(AgentVersion).where(AgentVersion.agent_id == agent.id))
         ).scalars().all()
+        return sorted(versions, key=lambda v: (semver_key(v.version), v.published_at), reverse=True)
 
     async def blocked_versions(self) -> list[AgentVersion]:
         stmt = (

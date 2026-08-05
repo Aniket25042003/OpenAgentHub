@@ -27,6 +27,7 @@ export default class Install extends Command {
         forceYes: flags.yes,
         noPermissions: Boolean(flags["no-permissions"]),
         registryUrl: flags.registry,
+        force: Boolean(flags.force),
       });
     } catch (err) {
       this.error((err as Error).message, { exit: 1 });

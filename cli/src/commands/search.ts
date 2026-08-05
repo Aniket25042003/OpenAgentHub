@@ -19,7 +19,13 @@ export default class Search extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Search);
-    const config = loadConfig();
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
     const registryUrl = flags.registry ?? config.registryUrl ?? REGISTRY_DEFAULT;
     const client = new RegistryClient(registryUrl, config.token);
 

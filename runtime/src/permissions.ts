@@ -34,12 +34,29 @@ export interface InstalledAgent {
   archiveDigest?: string;
 }
 
+export class ConfigCorruptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigCorruptError";
+  }
+}
+
 export function loadConfig(): OpenAgentHubConfig {
+  if (!existsSync(CONFIG_PATH)) return {};
+  let raw: string;
   try {
-    if (!existsSync(CONFIG_PATH)) return {};
-    return JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as OpenAgentHubConfig;
+    raw = readFileSync(CONFIG_PATH, "utf8");
+  } catch (err) {
+    throw new ConfigCorruptError(
+      `cannot read config ${CONFIG_PATH}: ${(err as Error).message}\nrecovery: restore the file from backup, or move it aside with:\n  mv ${CONFIG_PATH} ${CONFIG_PATH}.corrupt-$(date +%s)\n(reinstalling agents will recreate a fresh config)`,
+    );
+  }
+  try {
+    return JSON.parse(raw) as OpenAgentHubConfig;
   } catch {
-    return {};
+    throw new ConfigCorruptError(
+      `config ${CONFIG_PATH} is not valid JSON; refusing to treat it as empty (would silently lose installed agents and grants)\nrecovery: move it aside and reinstall agents:\n  mv ${CONFIG_PATH} ${CONFIG_PATH}.corrupt-$(date +%s)\n(reinstalling agents will recreate a fresh config)`,
+    );
   }
 }
 
