@@ -5,6 +5,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, JSONType, utcnow
 
+BLOCKED_REVIEW_STATUSES = ("rejected", "revoked")
+
 
 class Namespace(Base):
     __tablename__ = "namespaces"
@@ -70,5 +72,30 @@ class AgentVersion(Base):
     security_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     security_findings: Mapped[list] = mapped_column(JSONType, default=list)
     yanked: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    scan_requested_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    scan_completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     agent: Mapped[Agent] = relationship(back_populates="versions")
+    reviews: Mapped[list["VersionReviewEvent"]] = relationship(
+        back_populates="version", cascade="all, delete-orphan", order_by="VersionReviewEvent.created_at"
+    )
+
+
+class VersionReviewEvent(Base):
+    __tablename__ = "version_review_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version_id: Mapped[int] = mapped_column(ForeignKey("agent_versions.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    digest: Mapped[str] = mapped_column(String(64))
+    signer_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    version: Mapped[AgentVersion] = relationship(back_populates="reviews")

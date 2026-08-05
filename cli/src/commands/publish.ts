@@ -46,14 +46,12 @@ export default class Publish extends Command {
     this.log(`registered public key ${pkg.signature.publicKeyId}`);
 
     const { namespace, name, version } = parseNameVersion(pkg.manifest.name, pkg.manifest.version);
-    await client.publish(namespace, name, version, readFileSync(pkg.archivePath), pkg.signature);
+    const result = await client.publish(namespace, name, version, readFileSync(pkg.archivePath), pkg.signature);
     this.log(`published ${pkg.manifest.name}@${pkg.manifest.version}`);
-
-    try {
-      await client.triggerScan(namespace, name, version);
-      this.log("security scan queued");
-    } catch {
-      this.log("warning: could not queue security scan");
+    if (result.security === "flagged") {
+      this.log(`warning: security scan flagged the archive: ${result.findings.join("; ")}`);
+    } else {
+      this.log(`security scan: ${result.security}`);
     }
   }
 

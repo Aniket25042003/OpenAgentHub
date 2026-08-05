@@ -2,7 +2,19 @@ import { Command, Flags, Args } from "@oclif/core";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadManifestFromDir } from "@openagenthub/sdk";
-import { AgentRuntime, SecretsVault, loadConfig, grantedPermissions, installedAgentDir } from "@openagenthub/runtime";
+import {
+  AgentRuntime,
+  SecretsVault,
+  loadConfig,
+  grantedPermissions,
+  sandboxOverride,
+  installedAgentDir,
+  grantedSecretNames,
+  saveSecretGrant,
+} from "@openagenthub/runtime";
+import { confirmAll } from "../lib/prompt.js";
+import { checkRevocationBeforeRun, installedIsFresh } from "../lib/revocation.js";
+import { parseSpec } from "../lib/installer.js";
 
 export default class Run extends Command {
   static description = "Run an installed agent (CLI, MCP, or HTTP interface)";
@@ -16,6 +28,7 @@ export default class Run extends Command {
     interactive: Flags.boolean({ description: "wire stdin/stdout to the terminal (MCP servers)" }),
     timeout: Flags.integer({ description: "timeout in ms", default: 120_000 }),
     "agent-home": Flags.string({ description: "override agent home directory" }),
+    "allow-secrets": Flags.boolean({ description: "grant all requested secrets without prompting" }),
   };
 
   async run(): Promise<void> {
@@ -50,8 +63,49 @@ export default class Run extends Command {
     }
 
     const { manifest } = loadManifestFromDir(dir);
-    const granted = grantedPermissions(config, agentKey);
+
+    const revCheck = await checkRevocationBeforeRun(
+      agentKey,
+      installed,
+      config.registryUrl ?? "https://registry.openagenthub.dev",
+      config.token,
+    );
+    if (revCheck.blocked) {
+      this.error(`blocked: ${revCheck.blocked}`, { exit: 1 });
+    }
+    if (revCheck.staleWarning) {
+      this.warn(revCheck.staleWarning);
+      this.warn("status is stale; running with container isolation");
+    }
+
     const vault = SecretsVault.open();
+    const requestedSecrets = (manifest.secrets ?? []) as string[];
+    const vaultSecrets = vault.get(agentKey);
+    const grantedSecrets = grantedSecretNames(agentKey, config);
+    const toAsk = requestedSecrets.filter((s) => s in vaultSecrets && !grantedSecrets.has(s));
+
+    if (toAsk.length > 0 && !flags["allow-secrets"]) {
+      if (!process.stdin.isTTY) {
+        this.warn(`not exposing stored secrets (${toAsk.join(", ")}) in non-interactive mode; pass --allow-secrets to grant them`);
+      } else {
+        const answers = await confirmAll(
+          toAsk.map((s) => `expose stored secret '${s}' to ${manifest.name}?`),
+          false,
+        );
+        toAsk.forEach((s, i) => {
+          if (answers[i]) saveSecretGrant(config, agentKey, s);
+        });
+      }
+    } else if (flags["allow-secrets"]) {
+      for (const s of toAsk) saveSecretGrant(config, agentKey, s);
+    }
+    const exposedSecrets = requestedSecrets.filter((s) => grantedSecretNames(agentKey, config).has(s));
+
+    const override = sandboxOverride(config, agentKey);
+    const granted = Object.entries(grantedPermissions(config, agentKey))
+      .filter(([, v]) => v)
+      .map(([k]) => k)
+      .filter((k) => k !== "none") as never[];
 
     const runtime = new AgentRuntime(vault);
     const iface = flags.interface as "cli" | "mcp" | "http";
@@ -61,12 +115,23 @@ export default class Run extends Command {
       agentKey,
       interfaceName: iface,
       input: input === "" ? undefined : input,
-      granted: Object.entries(granted).filter(([, v]) => v).map(([k]) => k as never),
+      granted,
       trustLevel: installed.trust,
       model: flags.model,
       timeoutMs: flags.timeout,
       interactive: flags.interactive,
+      reviewStatus: installed.reviewStatus,
+      statusFresh: revCheck.statusFresh && installedIsFresh(installed),
+      sandboxOverride: override ?? null,
+      archiveDigest: installed.archiveDigest,
     });
+
+    if (result.sandboxReason) {
+      this.log(`sandbox: ${result.sandbox} (${result.sandboxReason})`);
+    }
+    if (exposedSecrets.length > 0) {
+      this.log(`exposed secrets: ${exposedSecrets.join(", ")}`);
+    }
 
     if (flags.interactive) {
       this.exit(result.result.exitCode);
@@ -77,10 +142,4 @@ export default class Run extends Command {
     if (result.result.stderr) process.stderr.write(result.result.stderr);
     this.exit(result.result.exitCode);
   }
-}
-
-function parseSpec(spec: string): { namespace: string; name: string; version?: string } {
-  const m = spec.match(/^([a-z0-9][a-z0-9-]*[a-z0-9])\/([a-z0-9][a-z0-9_-]*[a-z0-9])(?:@(.*))?$/);
-  if (!m) throw new Error(`invalid agent spec '${spec}'`);
-  return { namespace: m[1], name: m[2], version: m[3] || undefined };
 }

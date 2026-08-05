@@ -45,6 +45,20 @@ export interface AgentVersionDetail {
     revoked: boolean;
     expired: boolean;
   };
+  reviewStatus?: "pending" | "verified" | "warning" | "rejected" | "revoked";
+  reviewedAt?: string;
+  reviewReason?: string;
+}
+
+export interface RevocationItem {
+  namespace: string;
+  name: string;
+  version: string;
+  digest: string;
+  reason: string;
+  reviewStatus: string;
+  securityStatus: string;
+  updatedAt: string;
 }
 
 export interface SecurityReportSummary {
@@ -157,7 +171,7 @@ export class RegistryClient {
     version: string,
     archive: Buffer,
     signature: SignatureFile,
-  ): Promise<void> {
+  ): Promise<{ security: string; findings: string[] }> {
     const fd = new FormData();
     fd.set("archive", new Blob([archive]), `${name}-${version}.ahb`);
     fd.set("signature", new Blob([JSON.stringify(signature)]), "signature.sig.json");
@@ -165,7 +179,7 @@ export class RegistryClient {
       method: "PUT",
       body: fd,
     });
-    await res.json();
+    return (await res.json()) as { security: string; findings: string[] };
   }
 
   async triggerScan(namespace: string, name: string, version: string): Promise<void> {
@@ -173,6 +187,12 @@ export class RegistryClient {
       `/api/v1/agents/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/scan`,
       { method: "POST" },
     );
+  }
+
+  async getRevocations(): Promise<RevocationItem[]> {
+    const res = await this.request("/api/v1/revocations");
+    const data = (await res.json()) as { items: RevocationItem[] };
+    return data.items;
   }
 
   async me(): Promise<{

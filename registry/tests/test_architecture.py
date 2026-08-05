@@ -112,7 +112,7 @@ def test_openapi_exposes_all_router_paths():
 def test_module_tables_are_owned_by_their_module():
     ownership = {
         "identity": ("users", "signing_keys"),
-        "registry": ("agents", "agent_versions", "namespaces", "namespace_members"),
+        "registry": ("agents", "agent_versions", "namespaces", "namespace_members", "version_review_events"),
         "audit": ("audit_events",),
         "outbox": ("outbox_events", "queue_jobs"),
     }

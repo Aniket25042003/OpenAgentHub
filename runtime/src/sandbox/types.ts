@@ -32,4 +32,6 @@ export interface SandboxSpec {
   network: boolean;
   user: string;
   host: string;
+  runId?: string;
+  packageDigest?: string;
 }

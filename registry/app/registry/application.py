@@ -13,9 +13,9 @@ from app.entitlements.application import QuotaExceeded, check_publish_quota
 from app.identity.models import SigningKey, User
 from app.identity.repositories import SigningKeyRepository, UserRepository
 from app.outbox.repositories import OutboxRepository
-from app.registry.models import Agent, AgentVersion, Namespace
+from app.registry.models import Agent, AgentVersion, BLOCKED_REVIEW_STATUSES, Namespace
 from app.registry.repositories import AgentRepository, NamespaceRepository, VersionRepository
-from app.schemas import AgentSummary, AgentVersionDetail, SignatureFile, SecurityReport, SignerKeyInfo, dt_iso
+from app.schemas import AgentSummary, AgentVersionDetail, RevocationItem, SignatureFile, SecurityReport, SignerKeyInfo, dt_iso
 from app.security_review.adapters import RegistryScanStore
 from app.security_review.application import ScanTarget, run_scan
 from app.security_review.scanning import manifest_from_archive, validate_manifest_schema
@@ -80,6 +80,23 @@ class MaintainerNotFound(RegistryError):
     pass
 
 
+class VersionBlocked(RegistryError):
+    pass
+
+
+class ScanInProgress(RegistryError):
+    pass
+
+
+REVIEW_ACTIONS = ("verify", "warning", "reject", "revoke")
+REVIEW_STATUS_BY_ACTION = {
+    "verify": "verified",
+    "warning": "warning",
+    "reject": "rejected",
+    "revoke": "revoked",
+}
+
+
 @dataclass(frozen=True)
 class PublishResult:
     security: str
@@ -117,6 +134,9 @@ def _detail(version: AgentVersion, agent: Agent, signer_key: SigningKey | None) 
         security=SecurityReport(status=version.security_status, findings=version.security_findings),
         yanked=version.yanked,
         signerKey=signer_info,
+        reviewStatus=version.review_status,
+        reviewedAt=dt_iso(version.reviewed_at) if version.reviewed_at else None,
+        reviewReason=version.review_reason,
     )
 
 
@@ -194,6 +214,14 @@ async def get_version_detail(session: AsyncSession, namespace: str, name: str, v
     return _detail(ver, agent, signer)
 
 
+def _blocked_download_reason(ver: AgentVersion) -> str | None:
+    if ver.review_status in BLOCKED_REVIEW_STATUSES:
+        return f"version is {ver.review_status}: {ver.review_reason or 'no reason recorded'}"
+    if ver.security_status == "flagged":
+        return "version was flagged by the security scan"
+    return None
+
+
 async def download_archive(session: AsyncSession, namespace: str, name: str, version: str) -> bytes:
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None:
@@ -201,6 +229,9 @@ async def download_archive(session: AsyncSession, namespace: str, name: str, ver
     ver = await _resolve_version(session, agent, version)
     if ver is None:
         raise VersionNotFound("version not found")
+    blocked = _blocked_download_reason(ver)
+    if blocked is not None:
+        raise VersionBlocked(blocked)
     data = await ArchiveStore().get(namespace, name, ver.version)
     if data is None:
         raise ArchiveMissing("archive missing on server")
@@ -342,6 +373,7 @@ async def publish_version(
         security_status="pending",
         security_findings=[],
     )
+    version_repo.set_scan_timestamps(ver, requested=True)
 
     try:
         await ArchiveStore().put(namespace, name, version, archive_data)
@@ -351,6 +383,7 @@ async def publish_version(
     scan_store = RegistryScanStore()
     target = ScanTarget(version_id=ver.id, namespace=namespace, name=name, version=version)
     security_status, findings = await run_scan(session, target, archive_data, settings.max_archive_bytes, scan_store)
+    version_repo.set_scan_timestamps(ver, completed=True)
 
     await OutboxRepository(session).add_event(
         "scan.requested",
@@ -365,12 +398,101 @@ async def publish_version(
 async def trigger_rescan(session: AsyncSession, namespace: str, name: str, version: str) -> tuple[str, list[str]]:
     from app.security_review.application import ScanTargetMissing, rescan_version
 
+    agent = await AgentRepository(session).by_namespace_name(namespace, name)
+    if agent is None:
+        raise VersionNotFound("agent not found")
+    ver = await _resolve_version(session, agent, version)
+    if ver is None:
+        raise VersionNotFound("version not found")
+    last = ver.scan_requested_at
+    cooldown = get_settings().rescan_cooldown_seconds
+    if last is not None and cooldown > 0 and (datetime.now(timezone.utc) - last.replace(tzinfo=timezone.utc)).total_seconds() < cooldown:
+        raise ScanInProgress("a scan was requested very recently; retry shortly")
+    VersionRepository(session).set_scan_timestamps(ver, requested=True)
+
     try:
-        return await rescan_version(
+        status, findings = await rescan_version(
             session, namespace, name, version, get_settings().max_archive_bytes, RegistryScanStore()
         )
     except ScanTargetMissing as exc:
         raise VersionNotFound(str(exc)) from exc
+    VersionRepository(session).set_scan_timestamps(ver, completed=True)
+    return status, findings
+
+
+async def review_version(
+    session: AsyncSession,
+    user: User,
+    *,
+    namespace: str,
+    name: str,
+    version: str,
+    action: str,
+    reason: str,
+    notes: str | None,
+) -> dict:
+    if action not in REVIEW_ACTIONS:
+        raise RegistryError(f"action must be one of {', '.join(REVIEW_ACTIONS)}")
+    if not reason or len(reason) > 2000:
+        raise RegistryError("a structured reason is required (max 2000 characters)")
+    agent = await AgentRepository(session).by_namespace_name(namespace, name)
+    if agent is None:
+        raise AgentNotFound("agent not found")
+    ver = await _resolve_version(session, agent, version)
+    if ver is None:
+        raise VersionNotFound("version not found")
+
+    status = REVIEW_STATUS_BY_ACTION[action]
+    signer = await _signer_key(session, ver)
+    repo = VersionRepository(session)
+    changed = repo.set_review(ver, status=status, reason=reason, reviewer_id=user.id)
+    await repo.record_review_event(
+        version=ver,
+        action=action,
+        reason=reason,
+        notes=notes,
+        reviewer_id=user.id,
+        digest=ver.sha256,
+        signer_fingerprint=signer.fingerprint if signer is not None else None,
+    )
+    await AuditRepository(session).record(
+        actor_id=user.id,
+        action="version.reviewed",
+        target_type="agent_version",
+        target_id=ver.id,
+        detail={"namespace": namespace, "name": name, "version": version, "action": action, "status": status},
+    )
+    return {
+        "namespace": namespace,
+        "name": name,
+        "version": version,
+        "action": action,
+        "status": status,
+        "changed": changed,
+    }
+
+
+async def get_revocation_feed(session: AsyncSession) -> list[RevocationItem]:
+    repo = VersionRepository(session)
+    items: list[RevocationItem] = []
+    for ver in await repo.blocked_versions():
+        agent = ver.agent
+        blocked = _blocked_download_reason(ver)
+        if blocked is None:
+            continue
+        items.append(
+            RevocationItem(
+                namespace=agent.namespace,
+                name=agent.name,
+                version=ver.version,
+                digest=ver.sha256,
+                reason=blocked,
+                reviewStatus=ver.review_status,
+                securityStatus=ver.security_status,
+                updatedAt=dt_iso(ver.reviewed_at or ver.published_at),
+            )
+        )
+    return items
 
 
 async def claim_namespace(session: AsyncSession, user: User, name: str) -> Namespace:

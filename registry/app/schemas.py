@@ -74,6 +74,30 @@ class AgentVersionDetail(BaseModel):
     security: SecurityReport | None = None
     yanked: bool = False
     signerKey: SignerKeyInfo | None = None
+    reviewStatus: str = "pending"
+    reviewedAt: str | None = None
+    reviewReason: str | None = None
+
+
+class ReviewRequest(BaseModel):
+    action: Literal["verify", "warning", "reject", "revoke"]
+    reason: str
+    notes: str | None = None
+
+
+class RevocationItem(BaseModel):
+    namespace: str
+    name: str
+    version: str
+    digest: str
+    reason: str
+    reviewStatus: str
+    securityStatus: str
+    updatedAt: str
+
+
+class RevocationFeedResponse(BaseModel):
+    items: list[RevocationItem]
 
 
 class SearchResponse(BaseModel):

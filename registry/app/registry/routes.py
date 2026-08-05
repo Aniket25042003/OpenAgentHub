@@ -19,7 +19,9 @@ from app.registry.application import (
     NamespaceNotFound,
     NamespaceReserved,
     RegistryError,
+    ScanInProgress,
     SigningKeyForbidden,
+    VersionBlocked,
     VersionConflict,
     VersionNotFound,
 )
@@ -28,6 +30,8 @@ from app.schemas import (
     AgentVersionDetail,
     MaintainerAddRequest,
     NamespaceClaimRequest,
+    ReviewRequest,
+    RevocationFeedResponse,
     SearchResponse,
     VersionsResponse,
     YankRequest,
@@ -88,10 +92,18 @@ async def download_archive(namespace: str, name: str, version: str, session: Asy
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except VersionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except VersionBlocked as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ArchiveMissing as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     await session.commit()
     return Response(content=data, media_type="application/octet-stream", headers={"X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/revocations", response_model=RevocationFeedResponse)
+async def revocation_feed(session: AsyncSession = Depends(get_session)):
+    items = await application.get_revocation_feed(session)
+    return RevocationFeedResponse(items=items)
 
 
 @router.put("/agents/{namespace}/{name}/versions/{version}")
@@ -159,8 +171,35 @@ async def trigger_scan(
         scan_status, findings = await application.trigger_rescan(session, namespace, name, version)
     except VersionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ScanInProgress as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc), headers={"Retry-After": "10"}
+        ) from exc
     await session.commit()
     return {"status": scan_status, "findings": findings}
+
+
+@router.post("/admin/agents/{namespace}/{name}/versions/{version}/review")
+async def review_version(
+    namespace: str,
+    name: str,
+    version: str,
+    req: ReviewRequest,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_reviewer_or_admin),
+):
+    try:
+        result = await application.review_version(
+            session, user, namespace=namespace, name=name, version=version, action=req.action, reason=req.reason, notes=req.notes
+        )
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except VersionNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RegistryError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await session.commit()
+    return {"ok": True, **result}
 
 
 @router.post("/namespaces")

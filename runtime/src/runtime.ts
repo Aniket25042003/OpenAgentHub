@@ -1,8 +1,10 @@
-import { decideSandbox, detectRuntime, type Manifest, type Permission } from "@openagenthub/sdk";
+import { detectRuntime, type Manifest, type Permission } from "@openagenthub/sdk";
 import { buildAgentEnv, pickModel } from "./models.js";
+import { effectivePermissions } from "./permissions.js";
 import { SecretsVault } from "./secrets.js";
-import { ContainerSandbox } from "./sandbox/container.js";
+import { ContainerSandbox, dockerAvailable, dockerInstallHint } from "./sandbox/container.js";
 import { ProcessSandbox } from "./sandbox/process.js";
+import { effectiveSandbox, type SandboxOverride } from "./sandbox/policy.js";
 import type { RunOptions, RunResult, Sandbox } from "./sandbox/types.js";
 
 export type InterfaceName = "cli" | "mcp" | "http";
@@ -19,6 +21,11 @@ export interface RunAgentOptions {
   extraSecrets?: Record<string, string>;
   timeoutMs?: number;
   interactive?: boolean;
+  reviewStatus?: string;
+  statusFresh?: boolean;
+  sandboxOverride?: SandboxOverride | null;
+  archiveDigest?: string;
+  runId?: string;
 }
 
 export interface RunAgentResult {
@@ -26,10 +33,14 @@ export interface RunAgentResult {
   interfaceName: InterfaceName;
   sandbox: "container" | "process" | "none";
   model: { provider: string; model: string };
+  sandboxReason?: string;
 }
 
 export class AgentRuntime {
-  constructor(private readonly vault: SecretsVault) {}
+  constructor(
+    private readonly vault: SecretsVault,
+    private readonly dockerCheck: () => boolean = dockerAvailable,
+  ) {}
 
   private commandFor(manifest: Manifest, iface: InterfaceName): string {
     if (iface === "cli") {
@@ -58,6 +69,33 @@ export class AgentRuntime {
       };
     }
 
+    const systemDeps = manifest.dependencies?.system;
+    if (Array.isArray(systemDeps) && systemDeps.length > 0) {
+      throw new Error("dependencies.system is not supported by OpenAgentHub yet");
+    }
+
+    const effective = effectivePermissions(manifest, Object.fromEntries(opts.granted.map((p) => [p, true])));
+    if (effective.length !== opts.granted.length) {
+      const dropped = opts.granted.filter((p) => !effective.includes(p)).join(", ");
+      throw new Error(`refusing grants absent from the manifest: ${dropped}`);
+    }
+
+    const policy = effectiveSandbox({
+      trust: opts.trustLevel,
+      manifest,
+      reviewStatus: opts.reviewStatus,
+      statusFresh: opts.statusFresh,
+      override: opts.sandboxOverride,
+      archiveDigest: opts.archiveDigest,
+    });
+    if (policy.blocked) {
+      throw new Error(policy.blocked);
+    }
+
+    if (policy.mode === "container" && !this.dockerCheck()) {
+      throw new Error(dockerInstallHint());
+    }
+
     const secrets = { ...this.vault.get(opts.agentKey), ...opts.extraSecrets };
     const model = pickModel(manifest, opts.model, this.vault, opts.agentKey);
     const env = buildAgentEnv(model, manifest.name, manifest.version);
@@ -66,21 +104,20 @@ export class AgentRuntime {
     }
     env.AGENT_TRUST = opts.trustLevel;
     env.AGENT_HOME = opts.agentDir;
-    env.AGENT_GRANTED_PERMISSIONS = opts.granted.join(",");
-
-    const detected = detectRuntime();
-    const strategy = decideSandbox(manifest, detected, opts.trustLevel);
+    env.AGENT_GRANTED_PERMISSIONS = effective.join(",");
 
     let sandbox: Sandbox;
-    if (strategy.mode === "container") {
+    if (policy.mode === "container") {
       sandbox = new ContainerSandbox({
         agentDir: opts.agentDir,
         manifest,
-        granted: opts.granted,
+        granted: effective,
         env,
-        network: opts.granted.includes("network"),
+        network: effective.includes("network"),
         user: process.env.USER ?? "user",
         host: process.env.HOSTNAME ?? "localhost",
+        runId: opts.runId,
+        packageDigest: opts.archiveDigest,
       });
     } else {
       if (opts.trustLevel !== "trusted" && opts.trustLevel !== "local") {
@@ -90,11 +127,13 @@ export class AgentRuntime {
         {
           agentDir: opts.agentDir,
           manifest,
-          granted: opts.granted,
+          granted: effective,
           env,
-          network: opts.granted.includes("network"),
+          network: effective.includes("network"),
           user: process.env.USER ?? "user",
           host: process.env.HOSTNAME ?? "localhost",
+          runId: opts.runId,
+          packageDigest: opts.archiveDigest,
         },
         opts.trustLevel,
       );
@@ -111,6 +150,12 @@ export class AgentRuntime {
       result = await sandbox.run(runOpts);
     }
 
-    return { result, interfaceName: iface, sandbox: sandbox.kind, model: { provider: model.provider, model: model.model } };
+    return {
+      result,
+      interfaceName: iface,
+      sandbox: sandbox.kind,
+      model: { provider: model.provider, model: model.model },
+      sandboxReason: policy.reason,
+    };
   }
 }
