@@ -1,0 +1,146 @@
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+from app.registry.models import Agent, AgentVersion
+
+
+class AgentRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def by_namespace_name(self, namespace: str, name: str) -> Agent | None:
+        return (
+            await self.session.execute(select(Agent).where(Agent.namespace == namespace, Agent.name == name))
+        ).scalar_one_or_none()
+
+    async def create(
+        self,
+        *,
+        namespace: str,
+        name: str,
+        owner_id: int,
+        author: str,
+        description: str,
+        license: str,
+        framework: str | None,
+        models: list[str],
+        tags: list[str],
+    ) -> Agent:
+        agent = Agent(
+            namespace=namespace,
+            name=name,
+            owner_id=owner_id,
+            author=author,
+            description=description,
+            license=license,
+            framework=framework,
+            models=models,
+            tags=tags,
+        )
+        self.session.add(agent)
+        await self.session.flush()
+        return agent
+
+    def update_metadata(self, agent: Agent, *, author: str, description: str, license: str, framework: str | None, models: list[str], tags: list[str]) -> None:
+        agent.author = author
+        agent.description = description
+        agent.license = license
+        agent.framework = framework
+        agent.models = models
+        agent.tags = tags
+
+    async def search(self, *, q: str | None, framework: str | None, tags: str | None, models: str | None) -> list[Agent]:
+        stmt = select(Agent)
+        if q:
+            like = f"%{q.lower()}%"
+            stmt = stmt.where(
+                func.lower(Agent.name).like(like) | func.lower(Agent.namespace).like(like) | func.lower(Agent.description).like(like)
+            )
+        if framework:
+            stmt = stmt.where(Agent.framework == framework)
+        if tags:
+            wanted = [t.strip().lower() for t in tags.split(",") if t.strip()]
+            stmt = stmt.where(Agent.tags.contains(wanted))
+        if models:
+            wanted = [m.strip().lower() for m in models.split(",") if m.strip()]
+            stmt = stmt.where(Agent.models.contains(wanted))
+        return (await self.session.execute(stmt)).scalars().all()
+
+    async def latest_versions(self) -> dict[int, AgentVersion]:
+        versions = await self.session.execute(select(AgentVersion).order_by(AgentVersion.published_at.desc()))
+        latest: dict[int, AgentVersion] = {}
+        for v in versions.scalars():
+            latest.setdefault(v.agent_id, v)
+        return latest
+
+
+class VersionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def by_id(self, version_id: int) -> AgentVersion | None:
+        return (
+            await self.session.execute(
+                select(AgentVersion).where(AgentVersion.id == version_id).options(joinedload(AgentVersion.agent))
+            )
+        ).scalar_one_or_none()
+
+    async def by_agent_and_version(self, agent: Agent, version: str) -> AgentVersion | None:
+        return (
+            await self.session.execute(
+                select(AgentVersion).where(AgentVersion.agent_id == agent.id, AgentVersion.version == version)
+            )
+        ).scalar_one_or_none()
+
+    async def latest(self, agent: Agent) -> AgentVersion | None:
+        return (
+            await self.session.execute(
+                select(AgentVersion).where(AgentVersion.agent_id == agent.id).order_by(AgentVersion.published_at.desc())
+            )
+        ).scalars().first()
+
+    async def list_for(self, agent: Agent) -> list[AgentVersion]:
+        return (
+            await self.session.execute(
+                select(AgentVersion).where(AgentVersion.agent_id == agent.id).order_by(AgentVersion.published_at.desc())
+            )
+        ).scalars().all()
+
+    async def create(
+        self,
+        *,
+        agent_id: int,
+        version: str,
+        manifest: dict,
+        sha256: str,
+        archive_name: str,
+        signature: dict,
+        published_by_id: int,
+        security_status: str,
+        security_findings: list[str],
+    ) -> AgentVersion:
+        ver = AgentVersion(
+            agent_id=agent_id,
+            version=version,
+            manifest=manifest,
+            sha256=sha256,
+            archive_name=archive_name,
+            signature=signature,
+            published_by_id=published_by_id,
+            security_status=security_status,
+            security_findings=security_findings,
+        )
+        self.session.add(ver)
+        await self.session.flush()
+        return ver
+
+    def record_scan_result(self, version: AgentVersion, status: str, findings: list[str]) -> bool:
+        if version.security_status != status or version.security_findings != findings:
+            version.security_status = status
+            version.security_findings = findings
+            return True
+        return False
+
+    async def increment_download(self, version: AgentVersion) -> None:
+        version.download_count += 1

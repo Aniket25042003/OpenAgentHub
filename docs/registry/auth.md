@@ -1,6 +1,6 @@
 # Registry — Auth & keys
 
-`app/auth.py`, `app/routers/auth.py`, `app/routers/keys.py`
+`app/identity/application.py`, `app/identity/routes.py`
 
 ## Identity model
 

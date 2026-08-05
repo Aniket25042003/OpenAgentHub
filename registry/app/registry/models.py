@@ -1,51 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import JSON, String, Text, UniqueConstraint, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import TypeDecorator
 
-from app.db import Base
-
-
-class JSONType(TypeDecorator):
-    """JSON that maps to JSONB on Postgres and JSON/Text on SQLite."""
-
-    impl = Text
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(JSONB())
-        return dialect.type_descriptor(JSON())
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    github_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
-
-    keys: Mapped[list["SigningKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-
-
-class SigningKey(Base):
-    __tablename__ = "signing_keys"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    public_key_pem: Mapped[str] = mapped_column(Text)
-    fingerprint: Mapped[str] = mapped_column(String(32), unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
-
-    user: Mapped[User] = relationship(back_populates="keys")
+from app.db import Base, JSONType, utcnow
 
 
 class Agent(Base):

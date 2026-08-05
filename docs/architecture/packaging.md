@@ -65,7 +65,7 @@ Requires `agent.yaml` or `manifest.yaml` at the root and validates it.
 
 | Stage | What is checked | Where |
 | --- | --- | --- |
-| Publish | sha256 + Ed25519 sig over `openagenthub-signature-v1:<name>@<version>:<sha256>`; sig.name/version match route; manifest matches sig | `registry/app/security.py` `verify_signature` |
+| Publish | sha256 + Ed25519 sig over `openagenthub-signature-v1:<name>@<version>:<sha256>`; sig.name/version match route; manifest matches sig | `registry/app/crypto.py` `verify_signature` |
 | Install | `verifySignatureFileStrict` on the downloaded archive: schema/algorithm, sha256, signature, public-key fingerprint | `cli/src/lib/installer.ts` via `sdk` |
 
 The client also re-unpacks strictly, so a hostile archive flagged or missed by

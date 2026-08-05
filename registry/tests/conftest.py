@@ -14,6 +14,17 @@ os.environ.setdefault("REGISTRY_JWT_SECRET", "test-secret-0123456789abcdef012345
 from app.main import create_app  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+async def _database():
+    from app.db import dispose_db, reset_db
+    from app.telemetry import metrics
+
+    metrics.reset()
+    await reset_db()
+    yield
+    await dispose_db()
+
+
 @pytest.fixture
 async def client():
     app = create_app()
