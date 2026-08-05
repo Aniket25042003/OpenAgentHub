@@ -18,5 +18,8 @@
     "pack": "node scripts/package.mjs",
     "verify:pack": "node scripts/verify-pack.mjs",
     "pack:all": "node scripts/package.mjs && node scripts/verify-pack.mjs"
+  },
+  "allowScripts": {
+    "@next/swc-darwin-arm64@15.5.22": true
   }
 }

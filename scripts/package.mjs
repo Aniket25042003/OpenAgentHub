@@ -37,6 +37,8 @@ if (!skipWeb) {
     const src = join(STANDALONE, "web", entry);
     if (existsSync(src)) cpSync(src, join(DASHBOARD, entry), { recursive: true });
   }
+  const webStatic = join(WEB, ".next", "static");
+  if (existsSync(webStatic)) cpSync(webStatic, join(DASHBOARD, ".next", "static"), { recursive: true });
   const cliPkg = JSON.parse(readFileSync(join(CLI, "package.json"), "utf8"));
   writeFileSync(join(DASHBOARD, "VERSION"), `${cliPkg.name}@${cliPkg.version}\n`);
 }

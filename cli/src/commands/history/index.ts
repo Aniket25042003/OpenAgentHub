@@ -1,9 +1,9 @@
 import { Command, Flags } from "@oclif/core";
-import { listRuns, reconcileRuns } from "../lib/supervisor.js";
-import { printTable } from "../lib/print.js";
+import { listRuns, reconcileRuns } from "../../lib/supervisor.js";
+import { printTable } from "../../lib/print.js";
 
 export default class History extends Command {
-  static description = "List run history with exit information (clean up with 'openagenthub remove')";
+  static description = "List run history with exit information (clean up with 'openagenthub history prune' or 'openagenthub remove')";
 
   static flags = {
     json: Flags.boolean({ description: "output machine-readable JSON" }),

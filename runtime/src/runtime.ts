@@ -27,6 +27,7 @@ export interface RunAgentOptions {
   sandboxOverride?: SandboxOverride | null;
   archiveDigest?: string;
   runId?: string;
+  usageFilePath?: string;
 }
 
 export interface RunAgentResult {
@@ -106,6 +107,7 @@ export class AgentRuntime {
     env.AGENT_TRUST = opts.trustLevel;
     env.AGENT_HOME = opts.agentDir;
     env.AGENT_GRANTED_PERMISSIONS = effective.join(",");
+    if (opts.usageFilePath) env.AGENT_USAGE_FILE = opts.usageFilePath;
 
     let sandbox: Sandbox;
     if (policy.mode === "container") {

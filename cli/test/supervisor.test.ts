@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { UsageStore } from "@openagenthub/runtime";
 import type { ExitReason, RunProbe, RunRecord, RunState } from "../src/lib/supervisor.ts";
 
 const home = mkdtempSync(join(tmpdir(), "oah-sup-"));
@@ -236,3 +237,35 @@ describe("startManagedRun", () => {
 });
 
 void (null as unknown as ExitReason | undefined);
+
+describe("usage store sync", () => {
+  it("syncs every writeRun into the usage store", () => {
+    const rec = baseRecord({ state: "starting", exitCode: undefined, exitReason: undefined });
+    m.writeRun(rec);
+    m.writeRun({ ...rec, state: "exited", exitCode: 0, exitReason: "exit", endedAt: new Date().toISOString() });
+    const store = new UsageStore(`${process.env.AGENT_HOME}/control-plane/usage.db`);
+    const row = store.db.prepare("SELECT state, exit_code, exit_reason FROM runs WHERE run_id = ?").get(rec.runId) as {
+      state: string;
+      exit_code: number | null;
+      exit_reason: string | null;
+    };
+    assert.equal(row.state, "exited");
+    assert.equal(row.exit_code, 0);
+    assert.equal(row.exit_reason, "exit");
+    store.close();
+  });
+
+  it("removes usage rows when a run is removed", () => {
+    const rec = baseRecord({ state: "exited", endedAt: new Date().toISOString() });
+    m.writeRun(rec);
+    const store = new UsageStore(`${process.env.AGENT_HOME}/control-plane/usage.db`);
+    store.recordUsage({ runId: rec.runId, modelProvider: "openai", modelName: "gpt-4o-mini", tokensIn: 1, tokensOut: 1 });
+    assert.equal(store.db.prepare("SELECT count(*) AS n FROM token_usage WHERE run_id = ?").get(rec.runId).n, 1);
+    store.close();
+    m.removeRun(rec.runId);
+    const after = new UsageStore(`${process.env.AGENT_HOME}/control-plane/usage.db`);
+    assert.equal(after.db.prepare("SELECT count(*) AS n FROM runs WHERE run_id = ?").get(rec.runId).n, 0);
+    assert.equal(after.db.prepare("SELECT count(*) AS n FROM token_usage WHERE run_id = ?").get(rec.runId).n, 0);
+    after.close();
+  });
+});

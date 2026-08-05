@@ -1,6 +1,6 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -267,5 +267,48 @@ describe("agent CLI", () => {
     assert.match(r.stdout + r.stderr, /recovery/);
     assert.equal(readFileSync(configPath, "utf8"), "{ this is not json ");
     writeFileSync(configPath, original);
+  });
+
+  it("stats, history prune, and history export cover the usage store", () => {
+    const dir = join(proj, "usage-demo");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "agent.yaml"),
+      [
+        "manifestVersion: 1",
+        "name: demo/usage",
+        "version: 1.0.0",
+        "author: x",
+        "description: usage demo",
+        "license: MIT",
+        "runtime: { language: python }",
+        "models: { supported: [local] }",
+        'interfaces:\n  cli: { command: "python app.py" }',
+      ].join("\n"),
+    );
+    writeFileSync(join(dir, "app.py"), "import json, sys\nprint(json.dumps({'ok': True, **json.load(sys.stdin)}))\n");
+    assert.equal(runCli(["install", "demo/usage", "--dir", dir, "--yes"], { env: env() }).code, 0);
+    const run = runCli(["run", "demo/usage", "--input", "{\"x\":1}"], { env: env() });
+    assert.equal(run.code, 0, run.stderr);
+
+    const stats = runCli(["stats", "--json"], { env: env() });
+    assert.equal(stats.code, 0, stats.stderr);
+    const parsed = JSON.parse(stats.stdout) as { runs: { allTime: number; today: number }; tokens: { available: boolean }; containers: { current: number; historical: number } };
+    assert.ok(parsed.runs.allTime >= 1);
+    assert.ok(parsed.runs.today >= 1);
+    assert.equal(parsed.tokens.available, false);
+    assert.equal(parsed.containers.current, 0);
+
+    const exportRun = runCli(["history", "export"], { env: env() });
+    assert.equal(exportRun.code, 0, exportRun.stderr);
+    const exported = JSON.parse(exportRun.stdout) as { runs: Array<{ run_id: string }>; usage: unknown[] };
+    assert.ok(exported.runs.length >= 1);
+
+    const pruned = runCli(["history", "prune", "--older-than", "0"], { env: env() });
+    assert.equal(pruned.code, 0, pruned.stderr);
+    assert.match(pruned.stdout, /pruned/);
+    const after = runCli(["history", "--json"], { env: env() });
+    assert.equal(after.code, 0, after.stderr);
+    assert.deepEqual(JSON.parse(after.stdout), []);
   });
 });

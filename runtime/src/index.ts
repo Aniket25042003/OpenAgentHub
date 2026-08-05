@@ -8,3 +8,5 @@ export * from "./sandbox/process.js";
 export * from "./sandbox/container.js";
 export * from "./sandbox/policy.js";
 export * from "./system/index.js";
+export * from "./usage.js";
+export * from "./observability.js";
