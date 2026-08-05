@@ -1,6 +1,6 @@
 # Registry — Security scanning
 
-`app/security.py`
+`app/security_review/scanning.py`
 
 Every published archive passes through two checks.
 

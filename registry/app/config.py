@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = "*"
     max_archive_bytes: int = 250 * 1024 * 1024
+    outbox_poll_interval_seconds: float = 1.0
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -44,7 +44,7 @@ openagenthub-signature-v1:<name>@<version>:<sha256>
 - `<name>` is the full `namespace/name` from the manifest.
 - `<sha256>` is the lowercase hex digest of the **archive bytes** (`archive.ahb`
   on disk).
-- The registry mirrors this in `app/security.py` — keep both in sync.
+- The registry mirrors this in `app/crypto.py` — keep both in sync.
 
 ## Verifying a full signature file
 

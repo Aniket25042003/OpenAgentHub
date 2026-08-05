@@ -4,14 +4,18 @@ import httpx
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session
-from app.models import User
+from app.identity.models import SigningKey, User
+from app.identity.repositories import SigningKeyRepository, UserRepository
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+class IdentityError(ValueError):
+    pass
 
 
 def issue_token(user_id: int, username: str) -> str:
@@ -42,7 +46,7 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
     payload = decode_token(credentials.credentials)
     user_id = payload.get("sub")
-    user = await session.get(User, int(user_id))
+    user = await UserRepository(session).by_id(int(user_id))
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user no longer exists")
     return user
@@ -79,15 +83,34 @@ async def exchange_github_code(code: str) -> tuple[str, str, str | None]:
     return username, str(profile.get("id", "")), profile.get("avatar_url")
 
 
-async def upsert_github_user(session: AsyncSession, username: str, github_id: str, avatar_url: str | None) -> User:
-    res = await session.execute(select(User).where(User.github_id == github_id))
-    user = res.scalar_one_or_none()
+async def login_with_github(session: AsyncSession, code: str) -> User:
+    username, github_id, avatar_url = await exchange_github_code(code)
+    repo = UserRepository(session)
+    user = await repo.by_github_id(github_id)
     if user is None:
-        user = User(username=username, github_id=github_id, avatar_url=avatar_url)
-        session.add(user)
+        user = await repo.create(username=username, github_id=github_id, avatar_url=avatar_url)
     else:
         user.username = username
         user.avatar_url = avatar_url or user.avatar_url
-    await session.commit()
-    await session.refresh(user)
     return user
+
+
+async def register_signing_key(session: AsyncSession, user: User, public_key_pem: str) -> tuple[str, int]:
+    from app.crypto import SignatureError, load_ed25519_public_key, public_key_fingerprint
+
+    try:
+        load_ed25519_public_key(public_key_pem)
+    except SignatureError as exc:
+        raise IdentityError(str(exc)) from exc
+
+    fingerprint = public_key_fingerprint(public_key_pem)
+    repo = SigningKeyRepository(session)
+    existing = await repo.by_fingerprint(fingerprint)
+    if existing is not None:
+        return existing.fingerprint, existing.id
+    key = await repo.add(user_id=user.id, public_key_pem=public_key_pem, fingerprint=fingerprint)
+    return key.fingerprint, key.id
+
+
+async def list_signing_keys(session: AsyncSession, user: User) -> list[SigningKey]:
+    return await SigningKeyRepository(session).for_user(user.id)

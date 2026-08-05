@@ -1,14 +1,14 @@
 import uuid
 
-from app.auth import issue_token
-from app.db import _session_factory
-from app.models import User
+from app.db import get_session_factory
+from app.identity.application import issue_token
+from app.identity.models import User
 from tests.helpers import hello_manifest, make_archive, make_keypair
 
 
 async def create_user(username: str | None = None) -> tuple[str, int]:
     username = username or f"tester-{uuid.uuid4().hex[:8]}"
-    async with _session_factory() as session:
+    async with get_session_factory()() as session:
         user = User(username=username)
         session.add(user)
         await session.commit()

@@ -1,6 +1,6 @@
 import httpx
 
-import app.auth as auth
+import app.identity.application as identity_app
 from tests.helpers import hello_manifest, make_archive, make_keypair
 
 
@@ -20,13 +20,13 @@ class FakeTransport(httpx.AsyncBaseTransport):
 
 
 async def test_github_login_success(client, monkeypatch):
-    monkeypatch.setattr(auth, "get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(identity_app, "get_settings", lambda: FakeSettings())
     real_async = httpx.AsyncClient
 
     def _make(**kw):
         return real_async(transport=FakeTransport({"access_token": "gha-123"}, {"login": "octocat", "id": "42", "avatar_url": "https://x/a.png"}))
 
-    monkeypatch.setattr(auth.httpx, "AsyncClient", _make)
+    monkeypatch.setattr(identity_app.httpx, "AsyncClient", _make)
     res = await client.post("/api/v1/auth/github", json={"code": "code-abc"})
     assert res.status_code == 200
     body = res.json()
@@ -37,13 +37,13 @@ async def test_github_login_success(client, monkeypatch):
 
 
 async def test_github_login_bad_code(client, monkeypatch):
-    monkeypatch.setattr(auth, "get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(identity_app, "get_settings", lambda: FakeSettings())
     real_async = httpx.AsyncClient
 
     def _make(**kw):
         return real_async(transport=FakeTransport({"error": "bad_verification_code"}, {"login": "x"}))
 
-    monkeypatch.setattr(auth.httpx, "AsyncClient", _make)
+    monkeypatch.setattr(identity_app.httpx, "AsyncClient", _make)
     res = await client.post("/api/v1/auth/github", json={"code": "bad"})
     assert res.status_code == 401
 
