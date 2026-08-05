@@ -14,6 +14,7 @@ CLI="$ROOT/cli/bin/run.js"
 
 WORK="$(mktemp -d /tmp/oah-e2e-XXXXXX)"
 export AGENT_HOME="$WORK/home"
+export OPENAGENTHUB_NO_DAEMON=1
 PORT="${OAH_E2E_PORT:-18777}"
 REGISTRY="http://127.0.0.1:$PORT"
 export REGISTRY_DATABASE_URL="sqlite+aiosqlite:///$WORK/registry.db"

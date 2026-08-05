@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 const CLI_DIR = join(import.meta.dirname, "..", "cli");
 const PORT = 31877;
@@ -85,6 +84,71 @@ try {
 check("dashboard /health responds", () => {
   if (!healthOk) {
     throw new Error(`dashboard never became healthy: ${serverOutput.join("").slice(0, 500)}`);
+  }
+});
+
+console.log("== control-plane daemon lifecycle (clean install) ==");
+const cpHOME = join(TMP, "cp-home");
+const cpEnv = { ...process.env, AGENT_HOME: cpHOME, OPENAGENTHUB_NO_DAEMON: "" };
+const runCp = (args) => execFileSync(bin("openagenthub"), args, { encoding: "utf8", env: cpEnv });
+check("dashboard start spawns one daemon", () => {
+  const out = runCp(["dashboard", "start"]);
+  if (!/control plane started/.test(out)) throw new Error(`unexpected start output: ${out}`);
+});
+let cpPort = 0;
+check("state.json written with ready health", () => {
+  const state = JSON.parse(readFileSync(join(cpHOME, "control-plane", "state.json"), "utf8"));
+  cpPort = state.port;
+  if (state.health !== "ready") throw new Error(`health=${state.health}`);
+});
+let apiOk = true;
+let apiError = "";
+try {
+  const health = await fetch(`http://127.0.0.1:${cpPort}/api/local/v1/health`);
+  if (!health.ok) throw new Error(`health status ${health.status}`);
+  const version = await (await fetch(`http://127.0.0.1:${cpPort}/api/local/v1/version`)).json();
+  if (version.protocolVersion !== 1) throw new Error(`protocolVersion ${version.protocolVersion}`);
+  const noToken = await fetch(`http://127.0.0.1:${cpPort}/api/local/v1/snapshot`);
+  if (noToken.status !== 401) throw new Error(`snapshot without token: ${noToken.status}`);
+  const token = readFileSync(join(cpHOME, "control-plane", "token"), "utf8").trim();
+  const withToken = await fetch(`http://127.0.0.1:${cpPort}/api/local/v1/snapshot`, { headers: { authorization: `Bearer ${token}` } });
+  if (withToken.status !== 200) throw new Error(`snapshot with token: ${withToken.status}`);
+} catch (err) {
+  apiOk = false;
+  apiError = err.message;
+}
+check("local API: health + version public, snapshot needs token", () => {
+  if (!apiOk) throw new Error(apiError);
+});
+check("second start reuses the running daemon", () => {
+  const out = runCp(["dashboard", "start"]);
+  if (!/already running/.test(out)) throw new Error(`expected reuse: ${out}`);
+});
+check("dashboard stop terminates the daemon", () => {
+  const out = runCp(["dashboard", "stop"]);
+  if (!/stopped/.test(out)) throw new Error(`stop output: ${out}`);
+  const state = JSON.parse(readFileSync(join(cpHOME, "control-plane", "state.json"), "utf8"));
+  if (state.health !== "stopped") throw new Error(`health after stop: ${state.health}`);
+  let alive = true;
+  try {
+    process.kill(state.pid, 0);
+  } catch {
+    alive = false;
+  }
+  if (alive) throw new Error("daemon still alive after stop");
+});
+check("OPENAGENTHUB_NO_DAEMON=1 disables the control plane", () => {
+  const env = { ...cpEnv, OPENAGENTHUB_NO_DAEMON: "1" };
+  let stderr = "";
+  let threw = false;
+  try {
+    execFileSync(bin("openagenthub"), ["dashboard", "status"], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+  } catch (err) {
+    threw = true;
+    stderr = err.stderr ?? "";
+  }
+  if (!threw || !/disabled by OPENAGENTHUB_NO_DAEMON/.test(stderr)) {
+    throw new Error(`expected disable message, got: ${stderr || "no error"}`);
   }
 });
 
