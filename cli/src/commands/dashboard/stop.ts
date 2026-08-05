@@ -1,5 +1,5 @@
 import { Command } from "@oclif/core";
-import { clearState, daemonEnabled, readState, stopDaemon } from "../../lib/control-plane.js";
+import { daemonEnabled, readState, stopDaemon } from "../../lib/control-plane.js";
 
 export default class Stop extends Command {
   static description = "Stop the local control plane daemon";
@@ -13,12 +13,15 @@ export default class Stop extends Command {
       this.log("control plane is not running");
       return;
     }
-    const stopped = await stopDaemon();
-    if (stopped) {
+    const result = await stopDaemon();
+    if (result.outcome === "stopped") {
       this.log(`control plane stopped (pid ${state.pid})`);
-    } else {
-      this.log(`pid ${state.pid} is stale; cleared control-plane state`);
-      clearState();
+      return;
     }
+    if (result.outcome === "stale") {
+      this.log(`pid ${state.pid} is stale; cleared control-plane state`);
+      return;
+    }
+    this.error(`control plane did not stop in time (pid ${state.pid}); state preserved — inspect 'openagenthub dashboard logs'`, { exit: 1 });
   }
 }

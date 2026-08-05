@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
-import { statSync } from "node:fs";
-import { controlInfo, daemonEnabled, logFilenames, readLogTail } from "../../lib/control-plane.js";
+import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { controlInfo, daemonEnabled, readLogTail } from "../../lib/control-plane.js";
 
 export default class Logs extends Command {
   static description = "Show the control plane daemon logs (newest last)";
@@ -25,9 +25,21 @@ export default class Logs extends Command {
       let offset = statSync(logPath).size;
       for (;;) {
         await new Promise((r) => setTimeout(r, 500));
+        if (!this.exists(logPath)) return;
         const size = statSync(logPath).size;
+        if (size < offset) {
+          offset = 0;
+          continue;
+        }
         if (size > offset) {
-          this.log(readLogTail(flags.lines));
+          const fd = openSync(logPath, "r");
+          try {
+            const buffer = Buffer.alloc(size - offset);
+            readSync(fd, buffer, 0, buffer.length, offset);
+            this.log(buffer.toString("utf8").replace(/\n$/, ""));
+          } finally {
+            closeSync(fd);
+          }
           offset = size;
         }
       }
@@ -43,3 +55,4 @@ export default class Logs extends Command {
     }
   }
 }
+

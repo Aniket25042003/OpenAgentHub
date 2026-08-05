@@ -126,22 +126,22 @@ describe("control-plane daemon integration", () => {
   const noDaemon = process.env.OPENAGENTHUB_NO_DAEMON;
   const dashboardPath = join(import.meta.dirname, "..", "dashboard", "server.js");
 
-  it("spawns one daemon concurrently and stops it safely", async () => {
-    if (!existsSync(dashboardPath) || noDaemon === "1") return;
+  it("spawns one daemon concurrently and stops it safely", async (t) => {
+    if (!existsSync(dashboardPath) || noDaemon === "1") return t.skip("dashboard build unavailable");
     const [a, b] = await Promise.all([m.ensureDaemon(), m.ensureDaemon()]);
     assert.equal(a.state.pid, b.state.pid);
     assert.equal(a.state.health, "ready");
-    assert.ok(a.started || b.started === false);
+    assert.equal([a.started, b.started].filter(Boolean).length, 1);
     const health = await m.fetchControl<{ status: string }>(a.state.port, "/api/local/v1/health");
     assert.equal(health?.status, "ok");
-    assert.equal(await m.stopDaemon(), true);
+    assert.equal((await m.stopDaemon()).outcome, "stopped");
     const after = m.readState();
     assert.ok(!after || after.health === "stopped");
     assert.equal(m.isProcessAlive(a.state.pid), false);
   });
 
-  it("restarts a live daemon whose protocol version is stale", async () => {
-    if (!existsSync(dashboardPath) || noDaemon === "1") return;
+  it("restarts a live daemon whose protocol version is stale", async (t) => {
+    if (!existsSync(dashboardPath) || noDaemon === "1") return t.skip("dashboard build unavailable");
     const first = await m.ensureDaemon();
     const statePath = m.controlInfo().statePath;
     const stale = JSON.parse(readFileSync(statePath, "utf8"));
@@ -151,6 +151,6 @@ describe("control-plane daemon integration", () => {
     assert.equal(second.started, true);
     assert.equal(second.state.protocolVersion, 1);
     assert.notEqual(second.state.pid, first.state.pid);
-    assert.equal(await m.stopDaemon(), true);
+    assert.equal((await m.stopDaemon()).outcome, "stopped");
   });
 });

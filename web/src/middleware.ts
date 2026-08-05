@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 
 const TOKEN = process.env.OPENAGENTHUB_LOCAL_TOKEN ?? "";
 const PUBLIC_PATHS = new Set(["/api/local/v1/health", "/api/local/v1/version"]);
-const SAFE_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const SAFE_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function hostnameOf(authority: string): string {
+  const host = authority.trim();
+  if (host.startsWith("[")) {
+    const end = host.indexOf("]");
+    return end === -1 ? host.slice(1) : host.slice(1, end);
+  }
+  const colon = host.lastIndexOf(":");
+  return colon === -1 ? host : host.slice(0, colon);
+}
 
 export function middleware(req: NextRequest): NextResponse {
   const host = req.headers.get("host") ?? "";
-  const hostname = host.split(":")[0];
-  if (!SAFE_HOSTNAMES.has(hostname)) {
+  if (!SAFE_HOSTNAMES.has(hostnameOf(host))) {
     return NextResponse.json({ error: "forbidden: unsafe host" }, { status: 403 });
   }
 
@@ -27,7 +36,7 @@ export function middleware(req: NextRequest): NextResponse {
       } catch {
         return NextResponse.json({ error: "forbidden: bad origin" }, { status: 403 });
       }
-      if (originHost !== host) {
+      if (hostnameOf(originHost) !== hostnameOf(host)) {
         return NextResponse.json({ error: "forbidden: origin mismatch" }, { status: 403 });
       }
     }
