@@ -144,10 +144,12 @@ describe("agent CLI", () => {
     assert.ok(Array.isArray(snap.openagenthub.installed));
   });
 
-  it("ps --json lists containers or reports docker unavailable", () => {
+  it("ps --json lists managed runs or reports docker unavailable", () => {
     const r = runCli(["ps", "--json"], { env: env() });
     if (r.code === 0) {
-      assert.ok(Array.isArray(JSON.parse(r.stdout)));
+      const parsed = JSON.parse(r.stdout);
+      assert.ok(Array.isArray(parsed.runs));
+      assert.ok(Array.isArray(parsed.orphanedContainers));
     } else {
       assert.match(r.stderr, /docker is not available/);
     }

@@ -52,7 +52,7 @@ export class ControlPlaneDisabledError extends Error {}
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const CLI_ROOT = findCliRoot(here);
-const BIN_PATH = join(CLI_ROOT, "bin", "run.js");
+export const BIN_PATH = join(CLI_ROOT, "bin", "run.js");
 const DASHBOARD_SERVER_PATH = join(CLI_ROOT, "dashboard", "server.js");
 const PACKAGE_JSON_PATH = join(CLI_ROOT, "package.json");
 
@@ -368,22 +368,18 @@ export async function restartDaemon(): Promise<EnsureResult> {
 }
 
 export function readLogTail(lines: number = 100): string {
-  const files = [...logFilenames()].reverse();
-  if (files.length === 0) return "";
-  const chunks: string[] = [];
-  let remaining = lines;
+  const files = logFilenames();
+  let text = "";
   for (const file of files) {
-    if (remaining <= 0) break;
     try {
-      const text = readFileSync(file, "utf8");
-      const tail = text.split("\n").slice(-remaining);
-      chunks.push(tail.join("\n"));
-      remaining -= tail.length;
+      text += readFileSync(file, "utf8");
     } catch {
       /* skip */
     }
   }
-  return chunks.join("\n").replace(/^\n+/, "");
+  const trimmed = text.replace(/\n$/, "");
+  if (!trimmed) return "";
+  return trimmed.split("\n").slice(-lines).join("\n");
 }
 
 export async function openUrl(url: string): Promise<void> {

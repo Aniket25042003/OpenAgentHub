@@ -83,8 +83,14 @@ export class ProcessSandbox implements Sandbox {
             child.kill("SIGKILL");
           }, opts.timeoutMs)
         : undefined;
-      child.stdout.on("data", (d) => (stdout += d.toString()));
-      child.stderr.on("data", (d) => (stderr += d.toString()));
+      child.stdout.on("data", (d) => {
+        stdout += d.toString();
+        if (opts.streamOutput) process.stdout.write(d);
+      });
+      child.stderr.on("data", (d) => {
+        stderr += d.toString();
+        if (opts.streamOutput) process.stderr.write(d);
+      });
       if (opts.input) child.stdin.write(opts.input);
       child.stdin.end();
       child.on("error", (e) => {
