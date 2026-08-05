@@ -1,6 +1,7 @@
 import { Command, Flags, Args } from "@oclif/core";
 import { SecretsVault, loadConfig } from "@openagenthub/runtime";
 import { parseSpec } from "../lib/installer.js";
+import { resolveInstalledOrThrow } from "../lib/resolve.js";
 
 export default class Env extends Command {
   static description = "Manage encrypted secrets for an agent (values never leave your machine)";
@@ -19,19 +20,41 @@ export default class Env extends Command {
     const { args, argv, flags } = await this.parse(Env);
     const { namespace, name, version } = parseSpec(args.spec);
 
-    const config = loadConfig();
-    const installed = Object.entries(config.installed ?? {}).find(
-      ([key]) => key.startsWith(`${namespace}/${name}@`) && (version ? key === `${namespace}/${name}@${version}` : true),
-    );
-    if (!installed) {
-      this.error(`agent '${namespace}/${name}' is not installed`, { exit: 1 });
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
     }
-    const [agentKey] = installed;
+    let match;
+    try {
+      match = resolveInstalledOrThrow(config, namespace, name, version);
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
+    const [agentKey] = [match.key];
 
-    const vault = SecretsVault.open({ passphrase: flags.passphrase ?? process.env.AGENT_PASSPHRASE });
+    let vault: SecretsVault;
+    try {
+      vault = SecretsVault.open({ passphrase: flags.passphrase ?? process.env.AGENT_PASSPHRASE });
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
+
+    const readSecrets = (): Record<string, string> => {
+      try {
+        return vault.get(agentKey);
+      } catch (err) {
+        this.error((err as Error).message, { exit: 1 });
+        return {};
+      }
+    };
 
     if (flags.delete) {
-      const current = vault.get(agentKey);
+      const current = readSecrets();
       if (!(flags.delete in current)) {
         this.error(`no secret named '${flags.delete}'`, { exit: 1 });
       }
@@ -42,7 +65,7 @@ export default class Env extends Command {
     }
 
     if (flags.reveal) {
-      const current = vault.get(agentKey);
+      const current = readSecrets();
       if (!(flags.reveal in current)) {
         this.error(`no secret named '${flags.reveal}'`, { exit: 1 });
       }
@@ -52,7 +75,7 @@ export default class Env extends Command {
 
     const kv = argv.slice(1) as string[];
     if (kv.length === 0) {
-      const names = Object.keys(vault.get(agentKey));
+      const names = Object.keys(readSecrets());
       if (names.length === 0) {
         this.log(`no secrets stored for ${agentKey}`);
         return;

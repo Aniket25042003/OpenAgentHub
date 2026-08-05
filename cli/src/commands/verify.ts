@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { verifySignatureFileStrict, readSignatureFile, loadManifestFromDir } from "@openagenthub/sdk";
 import { loadConfig, installedAgentDir } from "@openagenthub/runtime";
 import { parseSpec } from "../lib/installer.js";
+import { resolveInstalledOrThrow } from "../lib/resolve.js";
 
 export default class Verify extends Command {
   static description = "Verify the integrity and signature of an installed agent";
@@ -13,15 +14,21 @@ export default class Verify extends Command {
   async run(): Promise<void> {
     const { args } = await this.parse(Verify);
     const { namespace, name, version } = parseSpec(args.spec);
-    const config = loadConfig();
-
-    const rec = Object.entries(config.installed ?? {}).find(
-      ([key]) => key.startsWith(`${namespace}/${name}@`) && (version ? key === `${namespace}/${name}@${version}` : true),
-    );
-    if (!rec) {
-      this.error(`agent '${namespace}/${name}' is not installed`, { exit: 1 });
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
     }
-    const [, agent] = rec;
+    let match;
+    try {
+      match = resolveInstalledOrThrow(config, namespace, name, version);
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
+    const agent = match.record;
     const dir = installedAgentDir({ namespace, name, version: agent.version });
 
     try {

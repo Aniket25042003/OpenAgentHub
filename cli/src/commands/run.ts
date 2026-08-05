@@ -15,6 +15,7 @@ import {
 import { confirmAll } from "../lib/prompt.js";
 import { checkRevocationBeforeRun, installedIsFresh } from "../lib/revocation.js";
 import { parseSpec } from "../lib/installer.js";
+import { installedMatches, resolveInstalledOrThrow } from "../lib/resolve.js";
 
 export default class Run extends Command {
   static description = "Run an installed agent (CLI, MCP, or HTTP interface)";
@@ -36,7 +37,6 @@ export default class Run extends Command {
     if (flags["agent-home"]) process.env.AGENT_HOME = flags["agent-home"];
 
     const { namespace, name, version } = parseSpec(args.spec);
-    const config = loadConfig();
 
     let input = flags.input;
     if (input === undefined && !process.stdin.isTTY) {
@@ -48,14 +48,28 @@ export default class Run extends Command {
       });
     }
 
-    const match = Object.entries(config.installed ?? {}).find(
-      ([key]) =>
-        key.startsWith(`${namespace}/${name}@`) && (version ? key === `${namespace}/${name}@${version}` : true),
-    );
-    if (!match) {
-      this.error(`agent '${namespace}/${name}${version ? `@${version}` : ""}' is not installed (run: agent install ${namespace}/${name})`, { exit: 1 });
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
     }
-    const [agentKey, installed] = match;
+
+    let match;
+    try {
+      match = resolveInstalledOrThrow(config, namespace, name, version);
+    } catch (err) {
+      this.error(
+        `${(err as Error).message} (run: agent install ${namespace}/${name}${version ? `@${version}` : ""})`,
+        { exit: 1 },
+      );
+      return;
+    }
+    const [agentKey, installed] = [match.key, match.record];
+    if (!version && installedMatches(config, namespace, name).length > 1) {
+      this.log(`note: multiple versions installed; running ${namespace}/${name}@${installed.version}`);
+    }
     const dir = installedAgentDir({ namespace, name, version: installed.version });
 
     if (!existsSync(dir)) {
@@ -75,7 +89,9 @@ export default class Run extends Command {
     }
     if (revCheck.staleWarning) {
       this.warn(revCheck.staleWarning);
-      this.warn("status is stale; running with container isolation");
+      if (installed.trust !== "trusted" && installed.trust !== "local") {
+        this.warn("status is stale; running with container isolation");
+      }
     }
 
     const vault = SecretsVault.open();

@@ -96,6 +96,46 @@ OUT="$("$CLI" install demo/hello --registry "$REGISTRY" --yes)"
 assert_contains "$OUT" "installed"
 assert_contains "$OUT" "container sandbox"
 
+# --- install --force guard ------------------------------------------------------
+step "install refuses a silent reinstall without --force"
+OUT="$("$CLI" install demo/hello --registry "$REGISTRY" --yes 2>&1 || true)"
+assert_contains "$OUT" "already installed"
+assert_contains "$OUT" "--force"
+OUT="$("$CLI" install demo/hello --registry "$REGISTRY" --yes --force)"
+assert_contains "$OUT" "installed"
+
+# --- update picks the actual latest version --------------------------------------
+step "update installs the highest published version"
+python3 - "$PROJ/agent.yaml" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+open(p, "w").write(s.replace("version: 0.1.0", "version: 0.2.0"))
+PY
+OUT="$("$CLI" publish "$PROJ" --registry "$REGISTRY")"
+assert_contains "$OUT" "published demo/hello@0.2.0"
+assert_contains "$OUT" "security scan: clean"
+OUT="$("$CLI" update demo/hello --registry "$REGISTRY" --yes)"
+assert_contains "$OUT" "latest version of demo/hello: 0.2.0"
+assert_contains "$OUT" "0.2.0"
+OUT="$(printf '{"name":"e2e"}' | "$CLI" run demo/hello --model local)"
+assert_contains "$OUT" '"hello": "e2e"'
+assert_contains "$OUT" "running demo/hello@0.2.0"
+OUT="$(printf '{"name":"e2e"}' | "$CLI" run demo/hello@0.1.0 --model local)"
+assert_contains "$OUT" '"hello": "e2e"'
+
+# --- corrupt config.json is refused, not silently reset --------------------------
+step "corrupt config.json fails with recovery instructions"
+CONFIG_FILE="$AGENT_HOME/config.json"
+cp "$CONFIG_FILE" "$CONFIG_FILE.bak"
+printf '{ broken json ' > "$CONFIG_FILE"
+if "$CLI" list >/dev/null 2>&1; then fail "corrupt config.json was silently accepted"; fi
+OUT="$("$CLI" list 2>&1 || true)"
+assert_contains "$OUT" "not valid JSON"
+assert_contains "$OUT" "recovery"
+grep -q "broken json" "$CONFIG_FILE" || fail "corrupt config.json was not preserved"
+mv "$CONFIG_FILE.bak" "$CONFIG_FILE"
+
 # --- verify --------------------------------------------------------------------
 step "verify signature"
 OUT="$("$CLI" verify demo/hello)"

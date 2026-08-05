@@ -77,8 +77,8 @@ registry/
 ## API surface (see [api.md](api.md) for the contract)
 
 - `GET /api/v1/agents` (+ search filters), `/agents/{ns}/{name}`,
-  `/agents/{ns}/{name}/versions`, `/versions/{version}`,
-  `/versions/{version}/archive`
+  `/agents/{ns}/{name}/versions` (semver desc), `/versions/{version}`
+  (`latest` = highest semver, not newest publish), `/versions/{version}/archive`
 - `PUT /agents/{ns}/{name}/versions/{version}` (publish, auth required;
   signature key must be registered + active, namespace must be owned)
 - `POST /versions/{version}/scan` (re-scan, auth required, cooldown-throttled)

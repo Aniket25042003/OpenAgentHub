@@ -9,6 +9,7 @@ import {
   type InstalledAgent,
 } from "@openagenthub/runtime";
 import { parseSpec } from "../../lib/installer.js";
+import { resolveInstalledOrThrow } from "../../lib/resolve.js";
 
 export default class SandboxSet extends Command {
   static description = "Set a digest-bound sandbox override for an installed agent";
@@ -28,15 +29,21 @@ export default class SandboxSet extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(SandboxSet);
     const { namespace, name, version } = parseSpec(args.spec);
-    const config = loadConfig();
-    const match = Object.entries(config.installed ?? {}).find(
-      ([key]) =>
-        key.startsWith(`${namespace}/${name}@`) && (version ? key === `${namespace}/${name}@${version}` : true),
-    );
-    if (!match) {
-      this.error(`agent '${namespace}/${name}${version ? `@${version}` : ""}' is not installed`, { exit: 1 });
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
     }
-    const [agentKey, installed] = match as [string, InstalledAgent];
+    let match;
+    try {
+      match = resolveInstalledOrThrow(config, namespace, name, version);
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
+    const [agentKey, installed] = [match.key, match.record] as [string, InstalledAgent];
     const dir = installedAgentDir({ namespace, name, version: installed.version });
 
     if (args.sandbox === "process") {

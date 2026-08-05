@@ -5,7 +5,7 @@ import {
   randomBytes,
   scryptSync,
 } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { SECRETS_DIR, MASTER_KEY_PATH } from "./config.js";
@@ -66,6 +66,13 @@ function decrypt(payload: string, key: Buffer): string {
   return dec.toString("utf8");
 }
 
+export class VaultCorruptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VaultCorruptError";
+  }
+}
+
 export class SecretsVault {
   private constructor(
     private readonly key: Buffer,
@@ -78,7 +85,7 @@ export class SecretsVault {
 
   static open(opts: { dir?: string; passphrase?: string } = {}): SecretsVault {
     const dir = opts.dir ?? SECRETS_DIR;
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     let key: Buffer;
     if (opts.passphrase) {
       key = deriveKey(opts.passphrase);
@@ -86,7 +93,9 @@ export class SecretsVault {
       key = Buffer.from(readFileSync(MASTER_KEY_PATH, "utf8"), "hex");
     } else {
       key = randomBytes(KEY_LEN);
-      writeFileSync(MASTER_KEY_PATH, key.toString("hex"), { mode: 0o600 });
+      const tmp = `${MASTER_KEY_PATH}.tmp-${process.pid}`;
+      writeFileSync(tmp, key.toString("hex"), { mode: 0o600 });
+      renameSync(tmp, MASTER_KEY_PATH);
     }
     if (key.length !== KEY_LEN) throw new Error("invalid vault key length");
     return new SecretsVault(key, dir);
@@ -99,21 +108,33 @@ export class SecretsVault {
   get(agentKey: string): Record<string, string> {
     const p = this.pathFor(agentKey);
     if (!existsSync(p)) return {};
+    let raw: string;
     try {
-      return JSON.parse(decrypt(readFileSync(p, "utf8"), this.key)) as Record<string, string>;
+      raw = readFileSync(p, "utf8");
+    } catch (err) {
+      throw new VaultCorruptError(`cannot read secret file ${p}: ${(err as Error).message}`);
+    }
+    try {
+      return JSON.parse(decrypt(raw, this.key)) as Record<string, string>;
     } catch {
-      return {};
+      throw new VaultCorruptError(
+        `secret file ${p} failed to decrypt — the master key (${MASTER_KEY_PATH}) may have changed or the file is corrupt\nrecovery: encrypted secrets are unrecoverable by design; delete this file and re-store the secrets with: agent env ${agentKey} KEY=VALUE`,
+      );
     }
   }
 
   set(agentKey: string, values: Record<string, string>): void {
-    mkdirSync(this.dir, { recursive: true });
+    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     const current = this.get(agentKey);
     const merged = { ...current, ...values };
     for (const [k, v] of Object.entries(merged)) {
       if (v === "" || v === undefined) delete merged[k];
     }
-    writeFileSync(this.pathFor(agentKey), encrypt(JSON.stringify(merged), this.key), { mode: 0o600 });
+    const payload = encrypt(JSON.stringify(merged), this.key);
+    const p = this.pathFor(agentKey);
+    const tmp = `${p}.tmp-${process.pid}`;
+    writeFileSync(tmp, payload, { mode: 0o600 });
+    renameSync(tmp, p);
   }
 
   delete(agentKey: string): void {

@@ -6,7 +6,13 @@ export default class List extends Command {
   static description = "List installed agents";
 
   async run(): Promise<void> {
-    const config = loadConfig();
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
     const installed = Object.entries(config.installed ?? {});
     if (installed.length === 0) {
       this.log("no agents installed");

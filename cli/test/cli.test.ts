@@ -178,4 +178,92 @@ describe("agent CLI", () => {
     assert.match(run.stdout, /"got": \{"n": 42\}/);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it("install --force guards against silent reinstalls", () => {
+    const dir = mkdtempSync(join(tmpdir(), "oah-force-"));
+    writeFileSync(
+      join(dir, "agent.yaml"),
+      [
+        "manifestVersion: 1",
+        "name: demo/force",
+        "version: 1.0.0",
+        "author: x",
+        "description: force semantics",
+        "license: MIT",
+        "runtime: { language: python }",
+        "models: { supported: [local] }",
+        "permissions: [none]",
+        'interfaces: { cli: { command: "python app.py" } }',
+      ].join("\n") + "\n",
+    );
+    writeFileSync(join(dir, "app.py"), "print('hi')\n");
+    const first = runCli(["install", "demo/force", "--dir", dir, "--yes"], { env: env() });
+    assert.equal(first.code, 0, first.stderr);
+    const second = runCli(["install", "demo/force", "--dir", dir, "--yes"], { env: env() });
+    assert.equal(second.code, 1);
+    assert.match(second.stdout + second.stderr, /already installed[\s\S]*--force/);
+    const forced = runCli(["install", "demo/force", "--dir", dir, "--yes", "--force"], { env: env() });
+    assert.equal(forced.code, 0, forced.stderr);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("resolves the highest installed version when no @version is given", () => {
+    const mk = (version: string, out: string) => {
+      const dir = mkdtempSync(join(tmpdir(), `oah-ver-${version}-`));
+      writeFileSync(
+        join(dir, "agent.yaml"),
+        [
+          "manifestVersion: 1",
+          `name: demo/ver`,
+          `version: ${version}`,
+          "author: x",
+          "description: versions",
+          "license: MIT",
+          "runtime: { language: python }",
+          "models: { supported: [local] }",
+          "permissions: [none]",
+          'interfaces: { cli: { command: "python app.py" } }',
+        ].join("\n") + "\n",
+      );
+      writeFileSync(join(dir, "app.py"), `print(${JSON.stringify({ v: out })})\n`);
+      return dir;
+    };
+    const d1 = mk("1.0.0", "one");
+    const d2 = mk("2.0.0", "two");
+    assert.equal(runCli(["install", "demo/ver", "--dir", d1, "--yes"], { env: env() }).code, 0);
+    assert.equal(runCli(["install", "demo/ver", "--dir", d2, "--yes"], { env: env() }).code, 0);
+
+    const run = runCli(["run", "demo/ver", "--model", "local"], { env: env() });
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(run.stdout, /note: multiple versions installed; running demo\/ver@2\.0\.0/);
+    assert.match(run.stdout, /two/);
+
+    const pinned = runCli(["run", "demo/ver@1.0.0", "--model", "local"], { env: env() });
+    assert.equal(pinned.code, 0, pinned.stderr);
+    assert.match(pinned.stdout, /one/);
+
+    const ambiguous = runCli(["uninstall", "demo/ver"], { env: env() });
+    assert.equal(ambiguous.code, 1);
+    assert.match(ambiguous.stdout + ambiguous.stderr, /multiple versions/);
+
+    const removed = runCli(["uninstall", "demo/ver@1.0.0"], { env: env() });
+    assert.equal(removed.code, 0, removed.stderr);
+    const last = runCli(["uninstall", "demo/ver"], { env: env() });
+    assert.equal(last.code, 0, last.stderr);
+
+    rmSync(d1, { recursive: true, force: true });
+    rmSync(d2, { recursive: true, force: true });
+  });
+
+  it("refuses to treat a corrupt config.json as empty and shows recovery instructions", () => {
+    const configPath = join(home, "config.json");
+    const original = readFileSync(configPath, "utf8");
+    writeFileSync(configPath, "{ this is not json ");
+    const r = runCli(["list"], { env: env() });
+    assert.equal(r.code, 1);
+    assert.match(r.stdout + r.stderr, /not valid JSON/);
+    assert.match(r.stdout + r.stderr, /recovery/);
+    assert.equal(readFileSync(configPath, "utf8"), "{ this is not json ");
+    writeFileSync(configPath, original);
+  });
 });

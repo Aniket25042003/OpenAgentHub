@@ -19,7 +19,13 @@ export default class Init extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Init);
-    const config = loadConfig();
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
     const user = userInfo().username ?? "local";
     const name = args.name.includes("/") ? args.name : `${user}/${args.name}`;
 

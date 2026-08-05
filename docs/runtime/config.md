@@ -54,14 +54,23 @@ Read/written by `loadConfig()` / `saveConfig()` (in `permissions.ts`; mode
 Helpers:
 
 ```ts
-loadConfig(): OpenAgentHubConfig                     // {} if missing/corrupt
-saveConfig(config): void
+loadConfig(): OpenAgentHubConfig                     // {} if missing; throws ConfigCorruptError if unreadable/invalid
+saveConfig(config): void                             // atomic: write tmp file (0o600) then rename
 recordInstall(config, agent): void                   // writes installed[key]
 grantedPermissions(config, agentKey): GrantedPermissions
 saveGrantedPermissions(config, agentKey, perms): void
 requestedPermissions(manifest): Permission[]          // manifest.permissions, or ["none"]
 networkGranted(perms): boolean
 ```
+
+### Corrupt config.json
+
+`loadConfig()` returns `{}` only when `config.json` does not exist. If the file
+exists but cannot be read or parsed, it throws `ConfigCorruptError` with
+recovery instructions — it is **never** silently treated as empty (that would
+silently forget installed agents, grants, and overrides). CLI commands surface
+this as a clean error and leave the file untouched; the recovery path is to
+move it aside and reinstall.
 
 Note: `trust` values are `"trusted" | "untrusted" | "unknown" | "local"`.
 Registry installs yield `unknown`/`untrusted`; local dir installs yield

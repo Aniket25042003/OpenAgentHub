@@ -11,6 +11,7 @@ import {
 } from "@openagenthub/runtime";
 import { checkRevocationBeforeRun, installedIsFresh } from "../../lib/revocation.js";
 import { parseSpec } from "../../lib/installer.js";
+import { resolveInstalledOrThrow } from "../../lib/resolve.js";
 
 export default class SandboxShow extends Command {
   static description = "Show the effective sandbox decision for an installed agent";
@@ -22,15 +23,21 @@ export default class SandboxShow extends Command {
   async run(): Promise<void> {
     const { args } = await this.parse(SandboxShow);
     const { namespace, name, version } = parseSpec(args.spec);
-    const config = loadConfig();
-    const match = Object.entries(config.installed ?? {}).find(
-      ([key]) =>
-        key.startsWith(`${namespace}/${name}@`) && (version ? key === `${namespace}/${name}@${version}` : true),
-    );
-    if (!match) {
-      this.error(`agent '${namespace}/${name}${version ? `@${version}` : ""}' is not installed`, { exit: 1 });
+    let config;
+    try {
+      config = loadConfig();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
     }
-    const [agentKey, installed] = match;
+    let match;
+    try {
+      match = resolveInstalledOrThrow(config, namespace, name, version);
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+      return;
+    }
+    const [agentKey, installed] = [match.key, match.record];
     const dir = installedAgentDir({ namespace, name, version: installed.version });
     if (!existsSync(dir)) {
       this.error(`agent directory missing for ${agentKey} (reinstall first)`, { exit: 1 });
