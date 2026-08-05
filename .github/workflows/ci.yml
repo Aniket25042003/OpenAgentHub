@@ -42,3 +42,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  package:
+    name: Single-package distribution (web build + pack + install smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Build web (Next.js standalone)
+        run: npm run build -w @openagenthub/web
+      - name: Pack npm artifact
+        run: node scripts/package.mjs
+      - name: Verify packed artifact installs and runs standalone
+        run: node scripts/verify-pack.mjs

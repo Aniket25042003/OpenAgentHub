@@ -7,14 +7,14 @@ security issues and style problems.
 
 ```bash
 # install (trusted for local development)
-agent install aniketpatel/pr-reviewer --dir . --yes
+openagenthub install aniketpatel/pr-reviewer --dir . --yes
 
 # set the secrets it needs
-agent env aniketpatel/pr-reviewer GITHUB_TOKEN=<token>
-agent env aniketpatel/pr-reviewer OPENAI_API_KEY=<token>   # optional
+openagenthub env aniketpatel/pr-reviewer GITHUB_TOKEN=<token>
+openagenthub env aniketpatel/pr-reviewer OPENAI_API_KEY=<token>   # optional
 
 # review a PR
-echo '{"repo": "owner/repo", "pr": 12}' | agent run aniketpatel/pr-reviewer --model openai
+echo '{"repo": "owner/repo", "pr": 12}' | openagenthub run aniketpatel/pr-reviewer --model openai
 ```
 
 Without an LLM API key the agent falls back to static heuristics

@@ -1319,6 +1319,12 @@ section.band.raised {
   margin: 0 0 16px;
 }
 
+.method-card .m-upcoming {
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+  color: var(--signal-wash);
+}
+
 @media (max-width: 860px) {
   .install-grid {
     grid-template-columns: 1fr;

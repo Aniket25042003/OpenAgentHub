@@ -40,7 +40,7 @@ the derived key is deterministic across runs (see `runtime/test/secrets.test.ts`
   the vault and are injected as environment variables at run time.
 - A corrupt vault file yields `{}` (get never throws).
 - `set` merges over the existing blob and writes atomically (mode `0o600`).
-- `agent uninstall` deletes the agent's vault entry explicitly; reinstalling
+- `openagenthub uninstall` deletes the agent's vault entry explicitly; reinstalling
   an agent keeps its vault entry (same `namespace/name@version` key).
 
 ## Environment overrides
@@ -52,5 +52,5 @@ At run time (`runtime/src/runtime.ts`), env is built in this order (last wins):
 3. `extraSecrets` passed to `runAgent` (not currently exposed by the CLI).
 4. `AGENT_TRUST`, `AGENT_HOME` (the agent dir), `AGENT_GRANTED_PERMISSIONS`.
 
-The CLI manages the vault via `agent env ns/name KEY=VALUE` (values never
+The CLI manages the vault via `openagenthub env ns/name KEY=VALUE` (values never
 echoed) and can reveal one with `--reveal`.

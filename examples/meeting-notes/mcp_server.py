@@ -12,7 +12,7 @@ newline-delimited JSON-RPC protocol:
     ->  {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"summarize_transcript","arguments":{...}}}
     <-  {"jsonrpc":"2.0","id":3,"result":{"content":[...]}}
 
-Run with:  agent run aniketpatel/meeting-notes --interface mcp --interactive
+Run with:  openagenthub run aniketpatel/meeting-notes --interface mcp --interactive
 """
 
 import json

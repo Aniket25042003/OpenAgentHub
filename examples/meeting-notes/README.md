@@ -6,8 +6,8 @@ server over stdio with a single `summarize_transcript` tool.
 ## Usage
 
 ```bash
-agent install aniketpatel/meeting-notes --dir . --yes
-agent run aniketpatel/meeting-notes --interface mcp --interactive
+openagenthub install aniketpatel/meeting-notes --dir . --yes
+openagenthub run aniketpatel/meeting-notes --interface mcp --interactive
 ```
 
 Connect any MCP client to the spawned process. To try it in isolation:

@@ -27,7 +27,7 @@ identity that works across the TS SDK and the Python registry.
   schema/algorithm, sha256, signature, key fingerprint). Defense in depth.
 - **Identity**: authors register public keys with the registry (GitHub OAuth
   account) so signatures can be attributed; fingerprints surface via
-  `agent verify`.
+  `openagenthub verify`.
 
 ## Consequences
 

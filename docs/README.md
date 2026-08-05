@@ -15,7 +15,7 @@ overview, then drill into the component that interests you.
 | How an agent actually runs | [architecture/execution.md](architecture/execution.md) |
 | SDK (TypeScript library) | [sdk/README.md](sdk/README.md) |
 | Runtime engine | [runtime/README.md](runtime/README.md) |
-| CLI (`agent` command) | [cli/README.md](cli/README.md) |
+| CLI (`openagenthub` command) | [cli/README.md](cli/README.md) |
 | Registry backend (FastAPI) | [registry/README.md](registry/README.md) |
 | Website (Next.js) | [web/README.md](web/README.md) |
 | Marketing site | [marketing/README.md](../marketing/README.md) |
@@ -31,7 +31,7 @@ overview, then drill into the component that interests you.
 
 ## Conventions used in this project
 
-- The manifest (`agent.yaml`) is the single source of truth for what an agent is.
+- The manifest (`openagenthub.yaml`) is the single source of truth for what an agent is.
 - Everything shipped is signed and verified; nothing runs unsandboxed unless
   explicitly trusted.
 - Tests: Node built-in runner for TS packages (`node --test "test/*.test.ts"`),

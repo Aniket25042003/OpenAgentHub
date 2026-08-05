@@ -61,7 +61,7 @@ export default class Run extends Command {
       match = resolveInstalledOrThrow(config, namespace, name, version);
     } catch (err) {
       this.error(
-        `${(err as Error).message} (run: agent install ${namespace}/${name}${version ? `@${version}` : ""})`,
+        `${(err as Error).message} (run: openagenthub install ${namespace}/${name}${version ? `@${version}` : ""})`,
         { exit: 1 },
       );
       return;
@@ -73,7 +73,7 @@ export default class Run extends Command {
     const dir = installedAgentDir({ namespace, name, version: installed.version });
 
     if (!existsSync(dir)) {
-      this.error(`agent directory missing for ${agentKey} (reinstall with: agent install ${namespace}/${name}@${installed.version})`, { exit: 1 });
+      this.error(`agent directory missing for ${agentKey} (reinstall with: openagenthub install ${namespace}/${name}@${installed.version})`, { exit: 1 });
     }
 
     const { manifest } = loadManifestFromDir(dir);

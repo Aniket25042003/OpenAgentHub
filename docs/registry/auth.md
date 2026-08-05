@@ -37,14 +37,14 @@ This is the API-level flow (used by the web UI / third-party clients). The
 
 ## How the CLI authenticates
 
-`agent login --token <token> --registry <url>`:
+`openagenthub login --token <token> --registry <url>`:
 
 - Stores whatever token you pass (a GitHub PAT works, or a registry-issued
   JWT) into `config.json` as `token`, and sets `registryUrl`.
 - Verifies by calling `GET /api/v1/me`. If the registry is unreachable it
   still stores the token and warns.
 - The e2e harness mints a JWT directly via `issue_token` against a temp DB and
-  passes it with `agent login --token`.
+  passes it with `openagenthub login --token`.
 
 So the registry accepts bearer JWTs; `exchangeGitHubToken` is how a JWT is
 obtained from a GitHub OAuth code.

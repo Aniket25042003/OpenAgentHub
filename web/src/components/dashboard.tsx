@@ -109,7 +109,7 @@ function InstalledAgents({ snap }: { snap: SystemSnapshot }) {
       </h2>
       {installed.length === 0 ? (
         <p className="hint">
-          No agents installed via OpenAgentHub. Try <code className="inline">agent install &lt;namespace&gt;/&lt;name&gt;</code>.
+          No agents installed via OpenAgentHub. Try <code className="inline">openagenthub install &lt;namespace&gt;/&lt;name&gt;</code>.
         </p>
       ) : (
         <div className="table-wrap">

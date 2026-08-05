@@ -37,7 +37,7 @@ export default class Publish extends Command {
     if (flags["public-only"]) return;
 
     if (!config.token) {
-      this.error("not authenticated. Run: agent login --token <GITHUB_TOKEN>", { exit: 1 });
+      this.error("not authenticated. Run: openagenthub login --token <GITHUB_TOKEN>", { exit: 1 });
     }
     const client = new RegistryClient(registryUrl, config.token);
 

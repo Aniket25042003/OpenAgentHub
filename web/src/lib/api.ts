@@ -39,7 +39,7 @@ export class ApiError extends Error {
   }
 }
 
-const REGISTRY_URL = (process.env.NEXT_PUBLIC_REGISTRY_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const REGISTRY_URL = (process.env.OPENAGENTHUB_REGISTRY_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 async function request<T>(path: string, revalidate = 60): Promise<T> {
   const res = await fetch(`${REGISTRY_URL}${path}`, { next: { revalidate } });

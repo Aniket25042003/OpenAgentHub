@@ -53,7 +53,7 @@ last-updated time. Clients refresh this feed before install/run:
 
 - install aborts for blocked versions with the registry's reason;
 - `run` checks the feed when online and blocks execution; when the registry is
-  unreachable the last-known status is retained and the agent runs with
+  unreachable the last-known status is retained and the openagenthub runs with
   container isolation (never silent process trust).
 
 ## Rescan

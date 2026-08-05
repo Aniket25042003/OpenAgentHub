@@ -8,7 +8,7 @@ decided at run time and maps to a sandbox.
 | Level | Where it comes from | Sandbox |
 | --- | --- | --- |
 | `trusted` | Reserved for explicitly trusted local installs (not currently produced by any install source) | isolated-process |
-| `local` | Installed from a local directory (`agent install --dir ...`) — the user authored it themselves | isolated-process |
+| `local` | Installed from a local directory (`openagenthub install --dir ...`) — the user authored it themselves | isolated-process |
 | `unknown` | Registry install where the archive is not flagged — the default | container |
 | `untrusted` | Registry install where the security scan flagged the archive | container |
 
@@ -75,7 +75,7 @@ Trust also depends on *who signed the archive*:
   (`SignatureFile`).
 - Signatures are verified at publish (registry) and at install (client).
 - The registry records the key fingerprint with each version (`signatureKeyId`
-  on install) and exposes it via `agent verify`.
+  on install) and exposes it via `openagenthub verify`.
 - Key registration (`POST /api/v1/keys`) is the foundation for
   verified-publisher attribution, but today trust is still derived from the
   security scan, not publisher verification.

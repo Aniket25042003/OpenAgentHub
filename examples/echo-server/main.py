@@ -2,7 +2,7 @@
 """Reference OpenAgentHub agent: JSON echo.
 
 CLI interface: reads a JSON object from stdin and echoes it back wrapped in
-agent metadata (also demonstrates reading the standard agent environment).
+agent metadata (also demonstrates reading the standard openagenthub environment).
 
 HTTP interface: run `python server.py` and POST JSON to /echo.
 """

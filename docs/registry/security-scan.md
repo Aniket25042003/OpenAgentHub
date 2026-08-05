@@ -67,7 +67,7 @@ root; anything else (nested `agent.yaml`, `agent.yml`, duplicates, AppleDouble
 - `trust` in summaries/details is derived: `flagged` → `"untrusted"`, else
   `"unknown"`.
 - The CLI installer maps `flagged` → `untrusted` → container sandbox, and the
-  website + `agent info`-style surfaces display the findings.
+  website + `openagenthub info`-style surfaces display the findings.
 - `flagged` versions are **quarantined**: archive download returns 403 and the
   public revocation feed (`GET /api/v1/revocations`) lists them, alongside
   `rejected`/`revoked` review statuses (see [review.md](review.md)).

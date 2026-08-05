@@ -4,8 +4,8 @@ import { useState } from "react";
 
 export function InstallCommand({ spec }: { spec: string }) {
   const [copied, setCopied] = useState(false);
-  const install = `agent install ${spec}`;
-  const run = `echo '{"prompt": "..."}' | agent run ${spec} --model openai`;
+  const install = `openagenthub install ${spec}`;
+  const run = `echo '{"prompt": "..."}' | openagenthub run ${spec} --model openai`;
 
   const copy = async (text: string) => {
     try {

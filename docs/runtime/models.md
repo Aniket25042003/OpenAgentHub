@@ -33,7 +33,7 @@ This mirrors the schema's `models.supported` enum
 - API key comes from the vault (`vault.get(agentKey)[keyEnv]`).
 - If a requested keyed provider has no key (and isn't ollama/local), throws
   `ModelError` with a hint like:
-  `agent env ns/name OPENAI_API_KEY=...`.
+  `openagenthub env ns/name OPENAI_API_KEY=...`.
 
 ## `buildAgentEnv(model, agentName, agentVersion)`
 

@@ -2,7 +2,7 @@
 
 A reference OpenAgentHub agent with two interfaces:
 
-- **CLI**: echoes JSON input with agent metadata (`agent run aniketpatel/echo-server --model local`)
+- **CLI**: echoes JSON input with agent metadata (`openagenthub run aniketpatel/echo-server --model local`)
 - **HTTP**: `python server.py` then `curl -X POST http://localhost:8080/echo -d '{"hello":"world"}'`
 
 ## Manifest highlights

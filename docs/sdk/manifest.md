@@ -88,7 +88,7 @@ manifestToYaml(manifest): string
 ```
 
 - `loadManifestFromDir` finds `agent.yaml` or `manifest.yaml` at the root.
-- `packAgent`/`unpackAgent` record which file was found (`agent.yaml` or
+- `packAgent`/`unpackAgent` record which file was found (`openagenthub.yaml` or
   `manifest.yaml` basename).
 - The CLI `validate`/`init`/`publish` commands all go through these loaders.
 

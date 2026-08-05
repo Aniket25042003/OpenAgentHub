@@ -10,7 +10,7 @@ Guidance for AI agents (and new humans) working in this repository.
 
 OpenAgentHub is a **universal package manager & registry for AI agents** — "the npm for agents".
 An agent is any piece of code declared by a single framework-agnostic manifest
-(`agent.yaml`). Users install and run agents through three execution interfaces:
+(`openagenthub.yaml`). Users install and run agents through three execution interfaces:
 
 - **CLI** — one-shot: JSON in on stdin, JSON out on stdout
 - **MCP** — long-running Model Context Protocol server (stdio/http)
@@ -34,7 +34,7 @@ Everything is **signed, verified, and sandboxed by default**:
 specs/       Single source of truth: agent.schema.json (JSON Schema 2020-12) + SPEC.md
 sdk/         @openagenthub/sdk — TS: manifest validation, crypto, pack/unpack, runtime detection, registry client
 runtime/     @openagenthub/runtime — TS: config/secrets vault/model selection/permissions/sandboxes/AgentRuntime
-cli/         @openagenthub/cli — oclif CLI, bin `agent` (init, validate, publish, install, run, ...)
+cli/         @openagenthub/cli — oclif CLI, bins `openagenthub` (primary) + `agent` (temporary alias) (init, validate, publish, install, run, ...)
 registry/    Python FastAPI backend: search/publish/auth/scan + archive storage
 web/         Next.js 15 (App Router) system dashboard + registry browse (ships with the package)
 marketing/   Standalone static landing site (Next.js `output: "export"`): product + install docs
@@ -130,7 +130,7 @@ cd web && npx next start -p 3100   # or: npm run dev -w @openagenthub/web
 - The registry's `check_archive_safety` and manifest parsing require the exact
   basename `agent.yaml` (a `._agent.yaml` AppleDouble file previously matched
   `endswith` and broke publishing).
-- `agent run` forwards piped stdin when no `--input` flag is given (see `cli/src/commands/run.ts`).
+- `openagenthub run` forwards piped stdin when no `--input` flag is given (see `cli/src/commands/run.ts`).
 - Runtime tests: `node --test "test/*.test.ts"` (quoted glob) from each TS workspace.
 
 ## Milestone status
