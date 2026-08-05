@@ -111,12 +111,13 @@ const SECURITY = [
 
 const METHODS = [
   { tag: "npm", title: "npm", body: "Install the CLI with npm — works on any computer with Node.js.", code: "npm install -g @openagenthub/cli" },
-  { tag: "brew", title: "Homebrew", body: "The easiest way to install and update on macOS.", code: "brew install openagenthub/tap/agent" },
+  { tag: "brew", title: "Homebrew", body: "The easiest way to install and update on macOS.", code: "brew install openagenthub/tap/agent", upcoming: true },
   {
     tag: "bin",
     title: "Binary",
     body: "Download the ready-to-run file for your platform.",
     code: "curl -fsSL https://github.com/Aniket25042003/OpenAgentHub/releases/latest/download/agent -o agent\nchmod +x agent && sudo mv agent /usr/local/bin/agent",
+    upcoming: true,
   },
 ];
 
@@ -166,7 +167,7 @@ export default function LandingPage() {
               </div>
               <pre className="term-body">
                 <div className="term-line" style={{ "--d": "0.05s" } as React.CSSProperties}>
-                  <span className="pr">$</span> agent install acme/pr-reviewer
+                  <span className="pr">$</span> openagenthub install acme/pr-reviewer
                 </div>
                 <div className="term-line" style={{ "--d": "0.25s" } as React.CSSProperties}>
                   <span className="cm"># checked &middot; verified &middot; sandboxed</span>
@@ -176,14 +177,14 @@ export default function LandingPage() {
                 </div>
                 <div className="term-line" style={{ "--d": "0.6s" } as React.CSSProperties}> </div>
                 <div className="term-line" style={{ "--d": "0.7s" } as React.CSSProperties}>
-                  <span className="pr">$</span> agent run acme/pr-reviewer
+                  <span className="pr">$</span> openagenthub run acme/pr-reviewer
                 </div>
                 <div className="term-line" style={{ "--d": "0.95s" } as React.CSSProperties}>
                   <span className="amb">&rarr;</span> <span className="out">&quot;Looks good — one nit in docs/changelog.md.&quot;</span>
                 </div>
                 <div className="term-line" style={{ "--d": "1.1s" } as React.CSSProperties}> </div>
                 <div className="term-line" style={{ "--d": "1.25s" } as React.CSSProperties}>
-                  <span className="pr">$</span> agent status
+                  <span className="pr">$</span> openagenthub status
                 </div>
                 <div className="term-line" style={{ "--d": "1.45s" } as React.CSSProperties}>
                   <span className="ok">&#9679;</span> <span className="dim">OpenClaw</span>&nbsp;&nbsp;&nbsp;&nbsp;running
@@ -236,7 +237,7 @@ export default function LandingPage() {
                 <ul className="sheet-list">
                   <li><Check /> One simple command installs and runs any agent</li>
                   <li><Check /> Agents are described once in a plain, simple file — no lock-in</li>
-                  <li><Check /> Every agent runs the same way: one command, in and out</li>
+                  <li><Check /> Every openagenthub runs the same way: one command, in and out</li>
                   <li><Check /> Every package is checked and verified before it ever runs</li>
                   <li><Check /> Secrets are stored once, encrypted, on your machine</li>
                 </ul>
@@ -352,6 +353,7 @@ export default function LandingPage() {
                   <h3><span className="m-tag">{m.tag}</span>{m.title}</h3>
                   <p>{m.body}</p>
                   <CodeBlock label={m.title.toLowerCase()} raw={m.code}>{m.code}</CodeBlock>
+                  {m.upcoming ? <p className="m-upcoming">Coming soon — not yet published</p> : null}
                 </div>
               </Reveal>
             ))}

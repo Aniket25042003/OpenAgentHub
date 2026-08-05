@@ -28,7 +28,7 @@ Test helper conventions:
 - Container sandbox argv construction is tested with a mocked docker
   (`runtime/test/runtime.test.ts`); real docker execution is skipped when
   docker isn't present.
-- The CLI's stdin-piping regression test pipes JSON through `agent run`.
+- The CLI's stdin-piping regression test pipes JSON through `openagenthub run`.
 
 ## Registry (Python)
 
@@ -76,7 +76,7 @@ init -> validate -> login -> publish -> search
   tests guard these.
 - Signature payload format (`openagenthub-signature-v1:<name>@<version>:<sha256>`,
   base64 sigs) — SDK, registry, and e2e all exercise it.
-- Piped-stdin behavior of `agent run`.
-- The exact-basename manifest check (`agent.yaml`/`manifest.yaml`) —
+- Piped-stdin behavior of `openagenthub run`.
+- The exact-basename manifest check (`openagenthub.yaml`/`manifest.yaml`) —
   AppleDouble `._*` handling.
 - `--interactive` on the container sandbox (stdin piping).

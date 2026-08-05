@@ -1,9 +1,9 @@
 # CLI — Commands reference
 
 Per-command behavior. Flags shown are the ones that matter; run
-`agent <cmd> --help` for the full list.
+`openagenthub <cmd> --help` for the full list.
 
-## `agent init ns/name`
+## `openagenthub init ns/name`
 
 - Flags: `--dir`, `--python`, `--node`, `--force`.
 - Scaffolds `agent.yaml` + `app.py` (python) or `index.js` (node) +
@@ -13,7 +13,7 @@ Per-command behavior. Flags shown are the ones that matter; run
   a `cli` interface, empty permissions/dependencies, `tags: [agent]`.
 - Refuses to overwrite existing files without `--force`.
 
-## `agent validate [dir]`
+## `openagenthub validate [dir]`
 
 - Flags: `--json`.
 - Loads + validates the manifest, runs `checkAgentRequirements` against the
@@ -22,23 +22,23 @@ Per-command behavior. Flags shown are the ones that matter; run
   `ok`/`warn` lines; exits 1 if requirements are unsatisfied.
 - `--json` emits `{ valid, manifestPath, manifest, requirements }`.
 
-## `agent login --token T [--registry URL]`
+## `openagenthub login --token T [--registry URL]`
 
 - Stores the token and registry URL in `config.json`; verifies with
   `GET /api/v1/me`. If unreachable, stores anyway and warns.
 - `--registry` defaults to `https://registry.openagenthub.dev`.
 
-## `agent publish [dir]`
+## `openagenthub publish [dir]`
 
 - Flags: `--registry`, `--public-only`.
 - Loads/creates the signing key at `$AGENT_HOME/keys/id_ed25519` (+ `.pub`),
   runs `packAgent` (excludes AppleDouble `._*`, sets `COPYFILE_DISABLE=1`).
-- Requires `config.token` (from `agent login`), calls `me()`,
+- Requires `config.token` (from `openagenthub login`), calls `me()`,
   `uploadPublicKey(publicKey)`, then `publish(...)` and `triggerScan(...)`.
 - Output includes archive path, sha256, publisher key id, and
   `published ns/name@version` + `security scan queued`.
 
-## `agent install ns/name[@version]`
+## `openagenthub install ns/name[@version]`
 
 - Flags: `--file <archive.ahb>`, `--dir <path>` (dev mode), `--registry`,
   `--yes`, `--no-permissions`, `--force`.
@@ -48,34 +48,34 @@ Per-command behavior. Flags shown are the ones that matter; run
   unknown/untrusted, or "running without sandbox isolation" for local.
 - Prompts for each declared permission unless `--yes`/`--no-permissions`.
 - Stores `signature.sig.json` + `archive.ahb` in the installed dir (used by
-  `agent verify`).
+  `openagenthub verify`).
 - **Reinstall guard**: installing an already-present exact version fails with
   a `--force` hint; `--force` reinstalls over it.
 
-## `agent update ns/name`
+## `openagenthub update ns/name`
 
 - Resolves `latest` on the server (highest semver, not newest publish) and
   installs that version; prints `latest version of ns/name: X.Y.Z`.
 - Flags: `--registry`, `--yes`. Always overwrites the target version (force).
 
-## `agent list`
+## `openagenthub list`
 
 - Prints installed agents (name, version, author, trust, installed date) plus
   their granted permissions. Reads `config.json` `installed` + `permissions`.
 
-## `agent uninstall ns/name[@version]`
+## `openagenthub uninstall ns/name[@version]`
 
 - Removes the installed directory, drops `installed`/`permissions` records,
   and deletes the agent's vault secrets.
 - Without `@version`: removes the only installed version; refuses when
   multiple versions are installed (requires `@version` to be explicit).
 
-## `agent run ns/name[@version]`
+## `openagenthub run ns/name[@version]`
 
 - Flags: `--model` (e.g. `deepseek` or `openai:gpt-4o`), `--interface`
   (`cli`|`mcp`|`http`, default cli), `--input JSON`, `--interactive`,
   `--timeout ms` (default 120_000), `--agent-home`, `--allow-secrets`.
-- Requires the agent to be installed (suggests `agent install ...`).
+- Requires the agent to be installed (suggests `openagenthub install ...`).
 - With no `@version`, resolves to the **highest installed version** when
   several are present (a note names the version being run).
 - Reads **piped stdin** when `--input` absent and stdin isn't a TTY.
@@ -93,16 +93,16 @@ Per-command behavior. Flags shown are the ones that matter; run
   stdout/stderr, exits with the agent's exit code. `--interactive` wires the
   terminal to the child (used for MCP stdio).
 
-## `agent sandbox show ns/name[@version]`
+## `openagenthub sandbox show ns/name[@version]`
 
 - Prints the effective sandbox decision for the installed agent: trust level,
   review status + freshness, manifest preference, any digest-bound override
   (`container`/`process`, digest, when it was set), and the final mode with the
   reason.
 
-## `agent sandbox set ns/name --sandbox container|process [--acknowledge-risk]`
+## `openagenthub sandbox set ns/name --sandbox container|process [--acknowledge-risk]`
 
-- Sets a **local override** for how the agent runs. Overrides are
+- Sets a **local override** for how the openagenthub runs. Overrides are
   digest-bound: they record the installed archive's sha256 and silently
   expire (fall back to container isolation) if the agent is reinstalled to a
   different digest.
@@ -111,37 +111,37 @@ Per-command behavior. Flags shown are the ones that matter; run
 - The override is stored in `config.json` (`sandboxOverrides`), not in the
   manifest.
 
-## `agent sandbox reset ns/name`
+## `openagenthub sandbox reset ns/name`
 
 - Removes the local sandbox override; the manifest preference and trust rules
   apply again.
 
-## `agent verify ns/name[@version]`
+## `openagenthub verify ns/name[@version]`
 
 - Loads the installed manifest, then `verifySignatureFileStrict` on the stored
   `archive.ahb` + `signature.sig.json`.
 - Dev installs (no signature file) → warning; manifest still checked.
 - Success prints `signature valid (publisher key <id>)`, sha256, integrity ok.
 
-## `agent env ns/name[@version]`
+## `openagenthub env ns/name[@version]`
 
 - Flags: `--delete KEY`, `--reveal KEY`, `--passphrase`.
 - With no extra args: lists secret names for the agent.
-- `agent env ns/name KEY=VALUE ...` stores (encrypted, merged) — names must
+- `openagenthub env ns/name KEY=VALUE ...` stores (encrypted, merged) — names must
   match `^[A-Z][A-Z0-9_]*$`.
 - `--reveal` prints a value (use with care); `--delete` removes one.
 
-## `agent search [query]`
+## `openagenthub search [query]`
 
 - Flags: `--framework`, `--tags`, `--models`, `--sort`
   (`downloads`|`trending`|`newest`, default trending), `--limit`, `--registry`.
 - Renders a table: name, version, author, framework, models, trust, downloads.
 
-## `agent runtime`
+## `openagenthub runtime`
 
 - Detects python3, node, docker, ollama, uv, git and prints a status table.
 
-## `agent status`
+## `openagenthub status`
 
 - Snapshot of the local machine + agent state: host (OS, arch, CPU/memory,
   uptime), Docker server version, registry URL, installed OpenAgentHub agents,
@@ -152,7 +152,7 @@ Per-command behavior. Flags shown are the ones that matter; run
 - Flags: `--json` (machine-readable snapshot), `--all` (include non-default
   containers in the output).
 
-## `agent ps`
+## `openagenthub ps`
 
 - Lists Docker containers. By default only OpenAgentHub's own sandbox containers
   (identified by their `oah-deps-*` dependency volume); `--all` shows every

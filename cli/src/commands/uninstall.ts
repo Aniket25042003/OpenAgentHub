@@ -31,7 +31,7 @@ export default class Uninstall extends Command {
     if (candidates.length > 1 && !version) {
       const versions = candidates.map((m) => m.record.version).join(", ");
       this.error(
-        `multiple versions of '${namespace}/${name}' are installed (${versions}); specify the version to remove: agent uninstall ${namespace}/${name}@<version>`,
+        `multiple versions of '${namespace}/${name}' are installed (${versions}); specify the version to remove: openagenthub uninstall ${namespace}/${name}@<version>`,
         { exit: 1 },
       );
     }

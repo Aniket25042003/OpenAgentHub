@@ -2,7 +2,7 @@
 
 OpenAgentHub is a **universal package manager and registry for AI agents** —
 "the npm for agents". An agent is any piece of code declared by a single,
-framework-agnostic manifest (`agent.yaml`). The whole system is built around
+framework-agnostic manifest (`openagenthub.yaml`). The whole system is built around
 signing, verification, and sandboxing so that installing an agent is as safe
 as installing a package.
 
@@ -44,20 +44,20 @@ as installing a package.
 ## The agent lifecycle
 
 1. **Author** writes an agent: `agent.yaml` manifest + code (Python, Node, ...).
-2. **Pack** (`agent publish`): packs the directory into an `.ahb` archive
+2. **Pack** (`openagenthub publish`): packs the directory into an `.ahb` archive
    (gzip tar) and signs it with an Ed25519 key. Output: `<name>_<version>.ahb`
    + `<name>_<version>.ahb.sig.json`. See [packaging.md](packaging.md).
 3. **Registry**: `PUT /api/v1/agents/{ns}/{name}/versions/{version}` uploads
    the archive + signature file. The registry re-verifies the signature,
    scans the archive (`check_archive_safety`), stores it, and records a
    security status (`clean` / `flagged`).
-4. **Install** (`agent install ns/name`): fetches the archive, re-verifies the
+4. **Install** (`openagenthub install ns/name`): fetches the archive, re-verifies the
    signature (sha256 + Ed25519 + key fingerprint), unpacks strictly into
    `$AGENT_HOME/agents/{ns}/{name}/{version}/`, records trust + granted
    permissions in `config.json`:
    - registry install → `unknown` (or `untrusted` if flagged) → **container**
    - local directory install (`--dir`) → `local` → **isolated-process**
-5. **Run** (`agent run ns/name --model openai`): reads stdin (JSON), injects
+5. **Run** (`openagenthub run ns/name --model openai`): reads stdin (JSON), injects
    model + secret env, and executes the agent in the chosen sandbox. Output is
    JSON on stdout.
 
@@ -68,14 +68,14 @@ An agent declares at least one execution interface:
 - **CLI** (`interfaces.cli.command`): one-shot. JSON on stdin, JSON on stdout.
   This is the workhorse for tasks like "review this PR".
 - **MCP** (`interfaces.mcp.entrypoint`): long-running Model Context Protocol
-  server over stdio. Run with `agent run ... --interface mcp --interactive`.
+  server over stdio. Run with `openagenthub run ... --interface mcp --interactive`.
 - **HTTP** (`interfaces.http.endpoint`): a deployable endpoint. The local
   runtime just reports the endpoint; a hosted deployment serves it.
 
-## Data flow for one `agent run`
+## Data flow for one `openagenthub run`
 
 ```
-agent run ns/name --model openai
+openagenthub run ns/name --model openai
   ├─ find installed record in config.installed
   ├─ load manifest (loadManifestFromDir)
   ├─ granted = grantedPermissions(config, agentKey)

@@ -4,19 +4,19 @@
 
 OpenAgentHub lets you publish, discover, install, and run AI agents the same way
 you install software packages. An agent is any piece of code declared by a
-single, framework-agnostic manifest (`agent.yaml`). Everything is **signed,
+single, framework-agnostic manifest (`openagenthub.yaml`). Everything is **signed,
 verified, and sandboxed by default**, so installing an agent you didn't write is
 as safe as installing a package.
 
 ```bash
 # one-shot agent: JSON in, JSON out
-printf '{"repo":"acme/app","pr":42}' | agent run github/pr-reviewer
+printf '{"repo":"acme/app","pr":42}' | openagenthub run github/pr-reviewer
 
 # long-running Model Context Protocol server
-agent run acme/meeting-notes --interface mcp --interactive
+openagenthub run acme/meeting-notes --interface mcp --interactive
 
 # deployable HTTP endpoint
-agent run acme/echo-server --interface http
+openagenthub run acme/echo-server --interface http
 ```
 
 Agents can be written in any language (Python, Node, ...) using any framework
@@ -39,7 +39,7 @@ Agents can be written in any language (Python, Node, ...) using any framework
   container (`--cap-drop ALL`, no-new-privileges, pids/memory/cpu limits,
   `--network none` unless granted, read-only root, non-root user). Trusted and
   local agents use a fast process path with shell-metacharacter rejection.
-- **Encrypted secrets vault** — agent env values are stored in an AES-256-GCM
+- **Encrypted secrets vault** — openagenthub env values are stored in an AES-256-GCM
   vault keyed to the machine (`$AGENT_HOME/master.key`); values never live in
   manifests or repos.
 - **Android-style permissions** — agents declare the capabilities they need
@@ -49,7 +49,7 @@ Agents can be written in any language (Python, Node, ...) using any framework
 - **Self-hostable registry + website** — a FastAPI backend and a Next.js front
   end you can run anywhere.
 - **System dashboard & diagnostics** — the website homepage is a live dashboard
-  (and `agent status`/`agent ps` expose the same data to the CLI) showing the
+  (and `openagenthub status`/`openagenthub ps` expose the same data to the CLI) showing the
   agents installed on your machine, running Docker containers, and detected
   third-party agents (OpenClaw, Hermes, …).
 
@@ -74,7 +74,7 @@ Agents can be written in any language (Python, Node, ...) using any framework
          ▼                         ▼                         ▼
  ┌──────────────┐          ┌──────────────┐          ┌──────────────┐
  │     CLI      │          │     SDK      │          │ third-party  │
- │ agent (cli/) │ ───────► │ @openagenthub│ ◄─────── │  clients     │
+ │openagenthub  │ ───────► │ @openagenthub│ ◄─────── │  clients     │
  │ install/run/ │  import  │     /sdk     │  import  └──────────────┘
  └──────┬───────┘          └──────┬───────┘
         │                         │
@@ -92,17 +92,17 @@ Agents can be written in any language (Python, Node, ...) using any framework
 ### The agent lifecycle
 
 1. **Author** writes an agent: `agent.yaml` manifest + code.
-2. **Pack** (`agent publish`): packs the project directory into an `.ahb`
+2. **Pack** (`openagenthub publish`): packs the project directory into an `.ahb`
    archive (gzip tar) and signs it with an Ed25519 key, producing
    `<name>_<version>.ahb` + `<name>_<version>.ahb.sig.json`.
 3. **Registry**: `PUT /api/v1/agents/{ns}/{name}/versions/{version}` uploads the
    archive + signature. The registry re-verifies the signature, statically scans
    the archive, stores it, and records a security status (`clean`/`flagged`).
-4. **Install** (`agent install ns/name`): fetches the archive, re-verifies the
+4. **Install** (`openagenthub install ns/name`): fetches the archive, re-verifies the
    signature (SHA-256 + Ed25519 + key fingerprint), unpacks strictly into
    `$AGENT_HOME/agents/{ns}/{name}/{version}/`, and records trust + granted
    permissions.
-5. **Run** (`agent run ns/name --model openai`): reads stdin (JSON), injects
+5. **Run** (`openagenthub run ns/name --model openai`): reads stdin (JSON), injects
    model + secret env, and executes the agent in the chosen sandbox. Output is
    JSON on stdout.
 
@@ -115,7 +115,7 @@ Agents can be written in any language (Python, Node, ...) using any framework
 specs/                  Single source of truth: agent.schema.json (JSON Schema 2020-12) + SPEC.md
 sdk/                    @openagenthub/sdk — TS: manifest validation, crypto, pack/unpack, runtime detection, registry client
 runtime/                @openagenthub/runtime — TS: config, secrets vault, model selection, permissions, sandboxes, AgentRuntime, system detection
-cli/                    @openagenthub/cli — oclif CLI, bin `agent` (init, validate, publish, install, run, status, ps, ...)
+cli/                    @openagenthub/cli — oclif CLI, bins `openagenthub` (primary) + `agent` (temporary alias) (init, validate, publish, install, run, status, ps, ...)
 registry/               Python FastAPI backend: search/publish/auth/scan + archive storage
 web/                    Next.js 15 (App Router) system dashboard + registry browse (ships with the package)
 marketing/              Standalone static landing site (Next.js, `output: "export"`) — product + install docs
@@ -135,7 +135,7 @@ AGENTS.md               Ground rules for AI agents and new contributors
 
 ```bash
 # check your local tooling from anywhere in the repo
-agent runtime
+openagenthub runtime
 ```
 
 ---
@@ -175,31 +175,31 @@ needs neither the registry nor the dashboard.
 
 ```bash
 # Scaffold an agent project
-agent init demo/hello --dir ./hello
+openagenthub init demo/hello --dir ./hello
 
 # Validate the manifest + local runtime requirements
-agent validate ./hello
+openagenthub validate ./hello
 
 # Package + sign locally (no upload)
-agent publish ./hello --public-only
+openagenthub publish ./hello --public-only
 
 # Start a local registry, then authenticate and publish
 # (in test/e2e.sh the token is minted against an ephemeral registry)
-agent login --token <GITHUB_TOKEN> --registry http://localhost:8000
-agent publish ./hello --registry http://localhost:8000
+openagenthub login --token <GITHUB_TOKEN> --registry http://localhost:8000
+openagenthub publish ./hello --registry http://localhost:8000
 
 # Search, install, verify, and run
-agent search hello --registry http://localhost:8000
-agent install demo/hello --registry http://localhost:8000 --yes
-agent verify demo/hello
-printf '{"name":"world"}' | agent run demo/hello --model local
+openagenthub search hello --registry http://localhost:8000
+openagenthub install demo/hello --registry http://localhost:8000 --yes
+openagenthub verify demo/hello
+printf '{"name":"world"}' | openagenthub run demo/hello --model local
 ```
 
 The reference agent `aniketpatel/echo-server` is the simplest example to clone.
 
 ---
 
-## The agent manifest (`agent.yaml`)
+## The agent manifest (`openagenthub.yaml`)
 
 The manifest is the **single source of truth** for what an agent is. It is
 framework-agnostic and validated strictly against
@@ -270,25 +270,25 @@ Plus `AGENT_NAME`, `AGENT_VERSION`, `AGENT_TRUST`, `AGENT_HOME`,
 
 ---
 
-## CLI reference (`agent`)
+## CLI reference (`openagenthub`)
 
 | Command | Description |
 | --- | --- |
-| `agent init <namespace/name>` | Scaffold a new agent project with an `agent.yaml` manifest |
-| `agent validate [dir]` | Validate the manifest and check local runtime requirements (`--json`) |
-| `agent publish [dir]` | Package, sign, and publish an agent to the registry (`--public-only` to skip upload) |
-| `agent login --token <GH>` | Authenticate with the registry using a GitHub token |
-| `agent search [query]` | Search the registry (filter by `--framework`, `--tags`, `--models`; sort by `--sort`) |
-| `agent install <spec>` | Install from the registry, a `.ahb` file (`--file`), or a local dir (`--dir`) |
-| `agent verify <spec>` | Verify the signature + integrity of an installed agent |
-| `agent run <spec>` | Run an installed agent (`--model`, `--interface`, `--input`, `--interactive`, `--timeout`) |
-| `agent env <spec>` | Manage encrypted secrets for an agent (`KEY=VALUE`, `--delete`, `--reveal`) |
-| `agent list` | List installed agents and their granted permissions |
-| `agent update <spec>` | Update an installed agent to the latest version |
-| `agent uninstall <spec>` | Remove an installed agent |
-| `agent runtime` | Detect local runtimes and tooling |
-| `agent status` | System + agent diagnostics: host, docker, registry, installed agents, detected third-party agents (`--json`, `--all`) |
-| `agent ps` | List Docker containers (default: only OpenAgentHub's own) — `--all` for every container |
+| `openagenthub init <namespace/name>` | Scaffold a new agent project with an `agent.yaml` manifest |
+| `openagenthub validate [dir]` | Validate the manifest and check local runtime requirements (`--json`) |
+| `openagenthub publish [dir]` | Package, sign, and publish an agent to the registry (`--public-only` to skip upload) |
+| `openagenthub login --token <GH>` | Authenticate with the registry using a GitHub token |
+| `openagenthub search [query]` | Search the registry (filter by `--framework`, `--tags`, `--models`; sort by `--sort`) |
+| `openagenthub install <spec>` | Install from the registry, a `.ahb` file (`--file`), or a local dir (`--dir`) |
+| `openagenthub verify <spec>` | Verify the signature + integrity of an installed agent |
+| `openagenthub run <spec>` | Run an installed agent (`--model`, `--interface`, `--input`, `--interactive`, `--timeout`) |
+| `openagenthub env <spec>` | Manage encrypted secrets for an agent (`KEY=VALUE`, `--delete`, `--reveal`) |
+| `openagenthub list` | List installed agents and their granted permissions |
+| `openagenthub update <spec>` | Update an installed agent to the latest version |
+| `openagenthub uninstall <spec>` | Remove an installed agent |
+| `openagenthub runtime` | Detect local runtimes and tooling |
+| `openagenthub status` | System + agent diagnostics: host, docker, registry, installed agents, detected third-party agents (`--json`, `--all`) |
+| `openagenthub ps` | List Docker containers (default: only OpenAgentHub's own) — `--all` for every container |
 
 Agent specs are `namespace/name[@version]`. `version=latest` is an alias.
 Piped stdin is forwarded to the agent when no `--input` flag is given.
@@ -297,27 +297,27 @@ Piped stdin is forwarded to the agent when no `--input` flag is given.
 
 ```bash
 # install and run an agent from the registry
-agent install acme/pr-reviewer --yes
-printf '{"repo":"acme/app","pr":42}' | agent run acme/pr-reviewer --model deepseek
+openagenthub install acme/pr-reviewer --yes
+printf '{"repo":"acme/app","pr":42}' | openagenthub run acme/pr-reviewer --model deepseek
 
 # run an MCP server interactively
-agent run acme/meeting-notes --interface mcp --interactive
+openagenthub run acme/meeting-notes --interface mcp --interactive
 
 # store a secret, then run with it injected
-agent env acme/pr-reviewer GITHUB_TOKEN=ghp_...
-printf '{"repo":"acme/app","pr":7}' | agent run acme/pr-reviewer
+openagenthub env acme/pr-reviewer GITHUB_TOKEN=ghp_...
+printf '{"repo":"acme/app","pr":7}' | openagenthub run acme/pr-reviewer
 ```
 
 ---
 
 ## System dashboard
 
-The website homepage (and the `agent status` / `agent ps` commands) give you a
+The website homepage (and the `openagenthub status` / `openagenthub ps` commands) give you a
 single local view of everything agent-related on your machine — no technical
 knowledge required.
 
 - **Host card** — OS, arch, CPU/memory, uptime, and Docker server version.
-- **Installed agents** — the OpenAgentHub agents installed via `agent install`,
+- **Installed agents** — the OpenAgentHub agents installed via `openagenthub install`,
   with namespace/name, version, and sandbox mode.
 - **Detected agents** — third-party agents that were *not* installed through
   OpenAgentHub (e.g. OpenClaw, Hermes Agent) are auto-detected by matching
@@ -331,10 +331,10 @@ The dashboard polls a local-only API endpoint (`/api/system`) every few seconds.
 Registry browsing/search lives at `/browse`; the dashboard is `/`.
 
 ```bash
-agent status          # human-readable system + agent summary
-agent status --json   # machine-readable snapshot
-agent ps              # OpenAgentHub containers
-agent ps --all        # every container on the machine
+openagenthub status          # human-readable system + agent summary
+openagenthub status --json   # machine-readable snapshot
+openagenthub ps              # OpenAgentHub containers
+openagenthub ps --all        # every container on the machine
 ```
 
 ---
@@ -425,7 +425,7 @@ tokens in `marketing/src/app/globals.css` in sync with
      granted), non-root user. Containers run with `--interactive` so piped
      stdin reaches the agent.
 4. **Scans.** The registry scans every published version before marking it
-   `clean`/`flagged`, and `agent verify` re-checks installed archives.
+   `clean`/`flagged`, and `openagenthub verify` re-checks installed archives.
 5. **Secrets vault.** Agent env values are encrypted (AES-256-GCM) in
    `$AGENT_HOME/secrets/`, keyed by a machine-bound key at
    `$AGENT_HOME/master.key`. Values are never printed in listings.

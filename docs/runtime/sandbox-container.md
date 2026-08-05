@@ -87,13 +87,13 @@ Same `RunOptions`/`RunResult` contract as the process sandbox:
 3. **Review status** — non-verified status with stale/unfresh status forces
    container isolation.
 4. **Local override** — digest-bound `container`/`process` override from
-   `agent sandbox set` (process requires `--acknowledge-risk`, only for
+   `openagenthub sandbox set` (process requires `--acknowledge-risk`, only for
    trusted/local agents; a stale digest resets the override to container).
 5. **Manifest preference** — `container` can be forced; `isolated-process` is
    honored only for trusted/local agents.
 6. **Default** — trusted/local agents use the fast process path.
 
-`agent sandbox show ns/name` displays each factor and the effective sandbox.
+`openagenthub sandbox show ns/name` displays each factor and the effective sandbox.
 Container-required-but-docker-missing fails closed with install guidance
 (`dockerInstallHint`).
 

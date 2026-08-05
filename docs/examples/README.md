@@ -14,12 +14,12 @@ Minimal agent demonstrating both **CLI** and **HTTP** interfaces.
   http://localhost:8080/echo`, `permissions: [none]`, `models.supported:
   [local]`.
 - `main.py`: reads JSON from stdin, echoes it back wrapped in agent metadata
-  (reads the standard agent env: `AGENT_NAME`, `AGENT_VERSION`, `AGENT_TRUST`,
+  (reads the standard openagenthub env: `AGENT_NAME`, `AGENT_VERSION`, `AGENT_TRUST`,
   `AGENT_GRANTED_PERMISSIONS`).
 - `server.py`: a tiny HTTP server (`python server.py`) that echoes POSTed JSON
   at `/echo`.
 - Exercises: piped stdin → stdout JSON, interface selection (`--interface cli`
-  vs `--interface http`), and reading the agent environment.
+  vs `--interface http`), and reading the openagenthub environment.
 
 ## `examples/github-pr-reviewer/`
 
@@ -46,7 +46,7 @@ Demonstrates the **MCP** interface (Model Context Protocol over stdio).
 - `mcp_server.py`: a minimal stdlib-only MCP server implementing
   `initialize`, `tools/list`, and `tools/call` (a `summarize_transcript` tool
   that returns structured minutes: decisions, action items, open questions).
-- Exercises: `agent run aniketpatel/meeting-notes --interface mcp
+- Exercises: `openagenthub run aniketpatel/meeting-notes --interface mcp
   --interactive`; live-tested with `initialize`/`tools/list`/`tools/call`
   during M5.
 
@@ -65,4 +65,4 @@ are excluded by the packer's ignore list.
 
 1. New dir `examples/<name>/` with `agent.yaml` + stdlib-only code.
 2. Wire a sanity case into `test/e2e.sh` if it exercises a new interface.
-3. Keep the manifest minimal but schema-valid; run `agent validate`.
+3. Keep the manifest minimal but schema-valid; run `openagenthub validate`.

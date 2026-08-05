@@ -7,6 +7,7 @@ out/
 next-env.d.ts
 npm-debug.log*
 *.tgz
+cli/dashboard/
 
 # --- Python registry ---
 .venv/

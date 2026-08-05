@@ -7,7 +7,7 @@ Output (stdout JSON):
 
 Works with only the Python standard library so it runs in the container
 sandbox without any dependency install. Uses an LLM when an API key is
-available via the agent environment (AGENT_API_KEY + AGENT_BASE_URL), and
+available via the openagenthub environment (AGENT_API_KEY + AGENT_BASE_URL), and
 falls back to static heuristics otherwise.
 """
 
@@ -126,7 +126,7 @@ def main() -> None:
 
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
-        print(json.dumps({"ok": False, "error": "GITHUB_TOKEN is not set (add it with: agent env aniketpatel/pr-reviewer GITHUB_TOKEN=...)"}))
+        print(json.dumps({"ok": False, "error": "GITHUB_TOKEN is not set (add it with: openagenthub env aniketpatel/pr-reviewer GITHUB_TOKEN=...)"}))
         sys.exit(2)
 
     pr_data = fetch(f"{GITHUB_API}/repos/{repo}/pulls/{pr}", token)

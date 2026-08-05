@@ -13,6 +13,10 @@
   "scripts": {
     "build": "npm run build -w @openagenthub/sdk && npm run build -w @openagenthub/runtime && npm run build -w @openagenthub/cli",
     "test": "npm run build && npm run test -w @openagenthub/sdk && npm run test -w @openagenthub/runtime && npm run test -w @openagenthub/cli",
-    "test:registry": "cd registry && uv run pytest -q"
+    "test:registry": "cd registry && uv run pytest -q",
+    "build:web": "npm run build -w @openagenthub/web",
+    "pack": "node scripts/package.mjs",
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "pack:all": "node scripts/package.mjs && node scripts/verify-pack.mjs"
   }
 }

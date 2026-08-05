@@ -130,7 +130,7 @@ export async function installAgent(
   const already = config.installed?.[`${namespace}/${name}@${manifest.version}`];
   if (already && !opts.force) {
     throw new Error(
-      `${namespace}/${name}@${manifest.version} is already installed (reinstall with: agent install ${namespace}/${name}@${manifest.version} --force)`,
+      `${namespace}/${name}@${manifest.version} is already installed (reinstall with: openagenthub install ${namespace}/${name}@${manifest.version} --force)`,
     );
   }
 

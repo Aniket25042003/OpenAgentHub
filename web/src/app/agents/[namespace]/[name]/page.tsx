@@ -94,7 +94,7 @@ export default async function AgentPage({ params }: PageProps) {
               </span>
             ))}
             <span className="muted">— set them with </span>
-            <code className="inline">agent env {agent.namespace}/{agent.name} NAME=value</code>
+            <code className="inline">openagenthub env {agent.namespace}/{agent.name} NAME=value</code>
           </p>
         ) : (
           <p className="muted">This agent declares no secrets.</p>

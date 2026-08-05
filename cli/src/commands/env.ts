@@ -81,7 +81,7 @@ export default class Env extends Command {
         return;
       }
       this.log(`secrets for ${agentKey}: ${names.join(", ")}`);
-      this.log("(set a value with: agent env <spec> KEY=VALUE)");
+      this.log("(set a value with: openagenthub env <spec> KEY=VALUE)");
       return;
     }
 

@@ -27,7 +27,7 @@ export default async function BrowsePage({ searchParams }: PageProps) {
         <h1>Browse agents</h1>
         <p>
           Agents published to the registry. Install with{" "}
-          <code className="inline">agent install namespace/name</code>, signed and sandboxed by default.
+          <code className="inline">openagenthub install namespace/name</code>, signed and sandboxed by default.
         </p>
         <form className="search-form" method="GET" action="/browse">
           <input name="q" defaultValue={q ?? ""} placeholder="search agents, e.g. github, pr, notes" />

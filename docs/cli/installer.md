@@ -2,7 +2,7 @@
 
 `cli/src/lib/installer.ts`
 
-Shared install logic used by `agent install` and `agent update`. All the
+Shared install logic used by `openagenthub install` and `openagenthub update`. All the
 safety-critical wiring lives here.
 
 ## Resolvers
@@ -43,8 +43,8 @@ source `dir:<path>`.
    spec → error otherwise.
 3. **Reinstall guard**: if the exact `namespace/name@version` is already in
    `config.installed` and `opts.force` is unset, abort with
-   `... is already installed (reinstall with: agent install ... --force)`.
-   `agent update` and `agent install --force` bypass this.
+   `... is already installed (reinstall with: openagenthub install ... --force)`.
+   `openagenthub update` and `openagenthub install --force` bypass this.
 4. Print trust + source; warn about container sandbox for unknown/untrusted.
 5. `checkAgentRequirements(manifest, detectRuntime())` — warn on missing
    runtimes; confirm install anyway unless `--yes`.
@@ -62,24 +62,24 @@ source `dir:<path>`.
 ## Trust recording
 
 Trust is stored **in `config.json`** (`installed[agentKey].trust`), not a
-separate marker file. `agent run` reads it and passes it to the runtime, which
-drives sandbox selection. There is no dedicated `agent trust` command — trust
+separate marker file. `openagenthub run` reads it and passes it to the runtime, which
+drives sandbox selection. There is no dedicated `openagenthub trust` command — trust
 comes from the install source (registry → unknown/untrusted, dir → local).
 
 ## Reinstall semantics
 
 - Installing the same `namespace/name@version` again requires `--force`
-  (reinstall guard); `agent update` always forces because it explicitly
+  (reinstall guard); `openagenthub update` always forces because it explicitly
   targets a new version.
 - Multiple versions of an agent can be installed side by side. Commands that
   target an installed agent without an explicit `@version` resolve to the
   **highest semver** installed (see `cli/src/lib/resolve.ts`); `agent
   uninstall` without a version refuses when more than one version is
   installed.
-- `agent update` resolves `latest` server-side (highest semver, not newest
+- `openagenthub update` resolves `latest` server-side (highest semver, not newest
   publish) and installs that version with the force flag.
 - Vault secrets are keyed by `namespace/name@version`, so reinstalls keep
-  them; `agent uninstall` deletes them explicitly.
+  them; `openagenthub uninstall` deletes them explicitly.
 
 ## Failure policy
 

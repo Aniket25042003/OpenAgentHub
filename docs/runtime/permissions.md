@@ -22,7 +22,7 @@ filesystem | network | github | terminal | browser | camera | microphone | none
   permission.
 - The grant is persisted as `GrantedPermissions` (`Record<permission, boolean>`)
   in `config.json`.
-- At run time `agent run` reads `grantedPermissions(config, agentKey)` and
+- At run time `openagenthub run` reads `grantedPermissions(config, agentKey)` and
   passes only the granted permission names to `runAgent`.
 
 Helpers:
@@ -51,7 +51,7 @@ grantedPermissions(config, agentKey): GrantedPermissions
 
 ## Secrets
 
-- `manifest.secrets` lists env-var names the agent wants. `agent run` asks for
+- `manifest.secrets` lists env-var names the agent wants. `openagenthub run` asks for
   each stored vault secret separately (`--allow-secrets` grants all without
   prompting; non-TTY runs skip un-granted secrets with a warning).
 - Grants are persisted as `secretGrants[agentKey]` in `config.json`.
