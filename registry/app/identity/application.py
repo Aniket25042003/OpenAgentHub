@@ -114,7 +114,7 @@ async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
             if user is not None:
                 return user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not signed in")
-    user, _ = await session_user(session, token)
+    user, _ = await session_user(session, token, rotate=False)
     return user
 
 

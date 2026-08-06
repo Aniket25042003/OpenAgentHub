@@ -136,6 +136,39 @@ async def test_add_member_rejects_unknown_user(client):
     assert res.status_code == 400
 
 
+async def test_maintainer_cannot_grant_administrator(client):
+    owner_token, _ = await _owner(f"org-esc-{uuid.uuid4().hex[:6]}")
+    maintainer_token, _ = await create_user("maintainer-eve")
+    await client.post("/api/v1/orgs", headers=auth_header(owner_token), json={"slug": "acme", "displayName": "Acme"})
+    await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(owner_token),
+        json={"username": "maintainer-eve", "role": "maintainer"},
+    )
+    await create_user("member-mallory")
+
+    escalated = await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(maintainer_token),
+        json={"username": "member-mallory", "role": "administrator"},
+    )
+    assert escalated.status_code == 403
+
+    same = await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(maintainer_token),
+        json={"username": "member-mallory", "role": "maintainer"},
+    )
+    assert same.status_code == 201
+
+    invite = await client.post(
+        "/api/v1/orgs/acme/invitations",
+        headers=auth_header(maintainer_token),
+        json={"username": "member-mallory", "role": "administrator"},
+    )
+    assert invite.status_code == 403
+
+
 async def test_change_member_role_and_transfer_ownership(client):
     owner_token, _ = await _owner(f"org-tr-{uuid.uuid4().hex[:6]}")
     _, other_uid = await create_user("member-carol")

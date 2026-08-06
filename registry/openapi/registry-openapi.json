@@ -481,17 +481,6 @@
             "title": "Mode",
             "type": "string"
           },
-          "registryOrigin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Registryorigin"
-          },
           "requestedScopes": {
             "default": "cli",
             "title": "Requestedscopes",
@@ -2867,6 +2856,22 @@
               "default": "public",
               "title": "Visibility",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "organizationSlug",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Organizationslug"
             }
           }
         ],

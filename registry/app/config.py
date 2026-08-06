@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     session_absolute_ttl_seconds: int = 7 * 24 * 3600
     session_idle_ttl_seconds: int = 14 * 24 * 3600
     session_rotate_after_seconds: int = 3600
+    session_cookie_domain: str = ""
+    session_cookie_secure: bool | None = None
+    device_login_ttl_seconds: int = 900
+    device_approve_per_ip_per_hour: int = 60
     current_tos_version: int = 1
     current_privacy_version: int = 1
     current_publisher_agreement_version: int = 1

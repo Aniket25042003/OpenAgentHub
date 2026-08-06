@@ -78,3 +78,31 @@ async def can_manage(session: AsyncSession, agent: Agent, user: User | None) -> 
         if ns_member is not None and ns_member.role in ("owner", "maintainer"):
             return True
     return False
+
+
+async def can_manage_access(session: AsyncSession, agent: Agent, user: User | None) -> bool:
+    """Separation of duty: visibility/grants are an ownership decision.
+
+    Namespace ``maintainers`` may publish new versions but cannot flip a
+    package to public or change its grants; only the package owner, org
+    owner/administrator, or the namespace *owner* may do that.
+    """
+    if user is None or user.status != "active":
+        return False
+    if agent.owner_id == user.id:
+        return True
+    if user.role in ("reviewer", "admin"):
+        return True
+    if agent.organization_id is not None:
+        org_repo = OrganizationRepository(session)
+        org = await org_repo.by_id(agent.organization_id)
+        if org is not None:
+            member = await org_repo.membership(org, user.id)
+            if member is not None and member.role in ("owner", "administrator"):
+                return True
+    ns = await NamespaceRepository(session).by_name(agent.namespace)
+    if ns is not None:
+        ns_member = await NamespaceRepository(session).is_member(ns, user.id)
+        if ns_member is not None and ns_member.role == "owner":
+            return True
+    return False

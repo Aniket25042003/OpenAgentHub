@@ -30,13 +30,11 @@ def _b64url_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + pad)
 
 
-def make_state_token(*, redirect_uri: str, device_user_code: str | None = None) -> str:
+def make_state_token(*, redirect_uri: str) -> str:
     settings = get_settings()
     exp = int(time.time()) + STATE_TTL_SECONDS
     nonce = _b64url(hashlib.sha256(f"{settings.jwt_secret}:{time.time()}:{redirect_uri}".encode()).digest()[:12])
-    payload = json.dumps(
-        {"r": redirect_uri, "n": nonce, "e": exp, "d": device_user_code}, separators=(",", ":")
-    ).encode()
+    payload = json.dumps({"r": redirect_uri, "n": nonce, "e": exp}, separators=(",", ":")).encode()
     digest = hmac.new(settings.jwt_secret.encode(), payload, hashlib.sha256).digest()
     return _b64url(payload) + "." + _b64url(digest)
 
@@ -80,11 +78,17 @@ def is_allowed_redirect(redirect_uri: str) -> bool:
 def cookie_value(token: str, *, max_age_seconds: int | None = None) -> str:
     settings = get_settings()
     age = max_age_seconds or settings.session_absolute_ttl_seconds
-    secure = settings.public_base_url.startswith("https://")
-    return (
-        f"{settings.session_cookie_name}={token}; Path=/; HttpOnly; "
-        f"SameSite=Lax; Max-Age={age}" + ("; Secure" if secure else "")
+    secure = (
+        settings.session_cookie_secure
+        if settings.session_cookie_secure is not None
+        else settings.public_base_url.startswith("https://")
     )
+    value = f"{settings.session_cookie_name}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={age}"
+    if settings.session_cookie_domain:
+        value += f"; Domain={settings.session_cookie_domain}"
+    if secure:
+        value += "; Secure"
+    return value
 
 
 def session_expiry(ttl_seconds: int | None = None) -> datetime:

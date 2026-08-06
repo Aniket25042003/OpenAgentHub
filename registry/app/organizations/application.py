@@ -43,6 +43,23 @@ class InvitationExpired(InvitationError):
     status_code = 410
 
 
+_ORG_RANK = {
+    "owner": 5,
+    "administrator": 4,
+    "maintainer": 3,
+    "security_reviewer": 2,
+    "billing_manager": 1,
+    "read_only": 1,
+}
+
+
+def _can_grant(actor_member: OrganizationMember, role: str) -> None:
+    if _ORG_RANK[role] > _ORG_RANK[actor_member.role]:
+        raise OrganizationForbidden("cannot grant a role higher than your own")
+    if actor_member.role not in ("owner", "administrator", "maintainer"):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+
+
 def _membership_or_raise(
     member: OrganizationMember | None, org: Organization
 ) -> OrganizationMember:
@@ -159,10 +176,7 @@ async def add_member(
     if org is None:
         raise OrganizationNotFound(f"organization '{slug}' not found")
     member = _membership_or_raise(await org_repo.membership(org, actor.id), org)
-    if role == "owner":
-        _role_or_raise(member, "owner")
-    elif member.role not in ("owner", "administrator", "maintainer"):
-        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    _can_grant(member, role)
     target = await UserRepository(session).by_username(username)
     if target is None:
         raise OrganizationError(f"user '{username}' not found")
@@ -297,10 +311,7 @@ async def invite_member(
     if org is None:
         raise OrganizationNotFound(f"organization '{slug}' not found")
     member = _membership_or_raise(await org_repo.membership(org, actor.id), org)
-    if role == "owner":
-        _role_or_raise(member, "owner")
-    elif member.role not in ("owner", "administrator", "maintainer"):
-        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    _can_grant(member, role)
     target = await UserRepository(session).by_username(username)
     if target is None:
         raise OrganizationError(f"user '{username}' not found")
