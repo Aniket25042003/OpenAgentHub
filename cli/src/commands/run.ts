@@ -117,7 +117,7 @@ export default class Run extends Command {
       sandbox: result.sandbox,
       state: result.result.exitCode === 0 ? "exited" : "failed",
       exitCode: result.result.exitCode,
-      exitReason: result.result.timedOut ? "timeout" : result.result.exitCode === 137 ? "oom" : "exit",
+      exitReason: result.result.timedOut ? "timeout" : result.sandbox === "container" && result.result.exitCode === 137 ? "oom" : "exit",
       endedAt: new Date().toISOString(),
       modelProvider: result.model.provider,
       modelName: result.model.model,
