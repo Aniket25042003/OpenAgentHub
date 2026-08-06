@@ -112,6 +112,119 @@ export interface CatalogPage {
   nextCursor?: string;
 }
 
+export interface PublisherOverview {
+  namespaceCount: number;
+  packageCount: number;
+  keyCount: number;
+  activeSessions: number;
+  publishesUsed: number;
+  publishesLimit: number;
+  publishesUnlimited: boolean;
+  pendingScans: number;
+  flaggedVersions: number;
+}
+
+export interface PublisherNamespace {
+  name: string;
+  role: string;
+  memberCount: number;
+  packageCount: number;
+  createdAt: string;
+}
+
+export interface PackageSummary {
+  namespace: string;
+  name: string;
+  version: string;
+  digest: string;
+  author: string;
+  description: string;
+  license: string;
+  publishedAt: string;
+  downloads: number;
+  trust: "trusted" | "untrusted" | "unknown";
+  reviewStatus: string;
+  securityStatus: string;
+  yanked: boolean;
+  blocked?: string;
+  signerFingerprint?: string;
+}
+
+export interface SecurityDiffField {
+  field: string;
+  previous?: string;
+  current?: string;
+}
+
+export interface SecurityDiff {
+  fields: SecurityDiffField[];
+  addedPermissions: string[];
+  removedPermissions: string[];
+  addedSecrets: string[];
+  removedSecrets: string[];
+}
+
+export interface ReviewEventItem {
+  action: string;
+  reason: string;
+  notes?: string;
+  reviewer: string;
+  createdAt: string;
+  digest: string;
+  signerFingerprint?: string;
+}
+
+export interface VersionIdentity {
+  namespace: string;
+  name: string;
+  version: string;
+  digest: string;
+  signerFingerprint?: string;
+  publishedAt: string;
+  publishedBy: string;
+  downloadCount: number;
+  trust: "trusted" | "untrusted" | "unknown";
+  reviewStatus: string;
+  reviewReason?: string;
+  securityStatus: string;
+  securityFindings: string[];
+  yanked: boolean;
+  blocked: boolean;
+  blockedReason?: string;
+}
+
+export interface VersionIdentityDetail {
+  identity: VersionIdentity;
+  manifest: Record<string, unknown>;
+  securityDiff: SecurityDiff;
+  reviewHistory: ReviewEventItem[];
+}
+
+export interface ActivityItem {
+  action: string;
+  detail: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ReviewQueueItem {
+  id: number;
+  namespace: string;
+  name: string;
+  version: string;
+  digest: string;
+  publishedAt: string;
+  publisher: string;
+  signerFingerprint?: string;
+  reviewStatus: string;
+  securityStatus: string;
+  riskScore: number;
+  permissions: string[];
+  secrets: string[];
+  downloads: number;
+}
+
+export type ReviewAction = "verify" | "warning" | "reject" | "revoke" | "request";
+
 const DEFAULT_TIMEOUT = 30_000;
 const MAX_DOWNLOAD_BYTES = 250 * 1024 * 1024;
 
@@ -364,6 +477,59 @@ export class RegistryClient {
 
   async logout(): Promise<void> {
     await this.request("/api/v1/logout", { method: "POST" });
+  }
+
+  async publisherOverview(): Promise<PublisherOverview> {
+    const res = await this.request("/api/v1/me/overview");
+    return (await res.json()) as PublisherOverview;
+  }
+
+  async publisherNamespaces(): Promise<PublisherNamespace[]> {
+    const res = await this.request("/api/v1/me/namespaces");
+    return (await res.json()) as PublisherNamespace[];
+  }
+
+  async publisherPackages(): Promise<PackageSummary[]> {
+    const res = await this.request("/api/v1/me/packages");
+    return (await res.json()) as PackageSummary[];
+  }
+
+  async versionIdentity(namespace: string, name: string, version: string): Promise<VersionIdentityDetail> {
+    const res = await this.request(
+      `/api/v1/me/packages/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`,
+    );
+    return (await res.json()) as VersionIdentityDetail;
+  }
+
+  async publisherActivity(): Promise<ActivityItem[]> {
+    const res = await this.request("/api/v1/me/activity");
+    const data = (await res.json()) as { items: ActivityItem[] };
+    return data.items;
+  }
+
+  async reviewQueue(): Promise<ReviewQueueItem[]> {
+    const res = await this.request("/api/v1/admin/review-queue");
+    const data = (await res.json()) as { items: ReviewQueueItem[] };
+    return data.items;
+  }
+
+  async reviewVersion(
+    namespace: string,
+    name: string,
+    version: string,
+    action: ReviewAction,
+    reason: string,
+    notes?: string,
+  ): Promise<{ status: string }> {
+    const res = await this.request(
+      `/api/v1/admin/agents/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/review`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason, notes }),
+      },
+    );
+    return (await res.json()) as { status: string };
   }
 }
 

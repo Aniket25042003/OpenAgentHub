@@ -15,7 +15,7 @@ import {
   type SandboxOverride,
   installedAgentDir,
 } from "@openagenthub/runtime";
-import { checkRevocationBeforeRun, installedIsFresh } from "./revocation.js";
+import { checkRevocationBeforeRun } from "./revocation.js";
 import { resolveToken } from "./credentials.js";
 import { parseSpec } from "./installer.js";
 import { installedMatches, resolveInstalledOrThrow } from "./resolve.js";
@@ -78,6 +78,9 @@ export async function prepareRunContext(spec: string | ParsedSpec, opts: Prepare
   if (revCheck.blocked) {
     throw new Error(`blocked: ${revCheck.blocked}`);
   }
+  if (revCheck.staleWarning) {
+    note(revCheck.staleWarning);
+  }
 
   const vault = SecretsVault.open();
   const requestedSecrets = (manifest.secrets ?? []) as string[];
@@ -115,7 +118,7 @@ export async function prepareRunContext(spec: string | ParsedSpec, opts: Prepare
     exposedSecrets,
     sandboxOverride: (sandboxOverride(config, agentKey) ?? null) as SandboxOverride | null,
     reviewStatus: installed.reviewStatus,
-    statusFresh: revCheck.statusFresh && installedIsFresh(installed),
+    statusFresh: revCheck.statusFresh,
     vault,
   };
 }

@@ -10,6 +10,7 @@ from app.db import dispose_db, init_db, ping_db
 from app.identity.routes import auth_router as identity_auth_router
 from app.identity.routes import router as identity_router
 from app.outbox.dispatcher import OutboxDispatcher
+from app.publisher.routes import router as publisher_router
 from app.ratelimit import RateLimitExceeded
 from app.registry.downloads import get_download_buffer
 from app.registry.routes import router as registry_router
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(identity_router)
     app.include_router(identity_auth_router)
     app.include_router(registry_router)
+    app.include_router(publisher_router)
 
     @app.exception_handler(RateLimitExceeded)
     async def rate_limit_handler(request: Request, exc: RateLimitExceeded):

@@ -48,6 +48,11 @@ class AgentRepository:
             await self.session.execute(select(Agent).where(Agent.namespace == namespace, Agent.name == name))
         ).scalar_one_or_none()
 
+    async def all_in_namespace(self, namespace: str) -> list[Agent]:
+        return (
+            await self.session.execute(select(Agent).where(Agent.namespace == namespace).order_by(Agent.name))
+        ).scalars().all()
+
     async def create(
         self,
         *,
@@ -178,6 +183,11 @@ class VersionRepository:
         ).scalars().all()
         return sorted(versions, key=lambda v: (semver_key(v.version), v.published_at), reverse=True)
 
+    async def all_for_agent(self, agent: Agent) -> list[AgentVersion]:
+        return (
+            await self.session.execute(select(AgentVersion).where(AgentVersion.agent_id == agent.id))
+        ).scalars().all()
+
     async def blocked_versions(self) -> list[AgentVersion]:
         stmt = (
             select(AgentVersion)
@@ -188,6 +198,21 @@ class VersionRepository:
             .options(joinedload(AgentVersion.agent))
         )
         return (await self.session.execute(stmt)).scalars().all()
+
+    async def pending_reviews(self) -> list[AgentVersion]:
+        stmt = (
+            select(AgentVersion)
+            .where(AgentVersion.review_status == "pending")
+            .options(joinedload(AgentVersion.agent))
+        )
+        return (await self.session.execute(stmt)).scalars().all()
+
+    async def reviews_for(self, version: AgentVersion) -> list[VersionReviewEvent]:
+        return (
+            await self.session.execute(
+                select(VersionReviewEvent).where(VersionReviewEvent.version_id == version.id)
+            )
+        ).scalars().all()
 
     async def create(
         self,

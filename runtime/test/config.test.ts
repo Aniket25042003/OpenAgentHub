@@ -8,6 +8,7 @@ let home: string;
 let loadConfig: () => Record<string, unknown>;
 let saveConfig: (c: Record<string, unknown>) => void;
 let recordInstall: (c: Record<string, unknown>, a: Record<string, unknown>) => void;
+let recordStatusRefresh: (c: Record<string, unknown>, k: string, s: Record<string, string>) => void;
 let ConfigCorruptError: new (m: string) => Error;
 
 before(async () => {
@@ -17,6 +18,7 @@ before(async () => {
   loadConfig = mod.loadConfig;
   saveConfig = mod.saveConfig;
   recordInstall = mod.recordInstall;
+  recordStatusRefresh = mod.recordStatusRefresh;
   ConfigCorruptError = mod.ConfigCorruptError;
 });
 
@@ -57,5 +59,29 @@ describe("config", () => {
     }
     assert.equal(readFileSync(configPath, "utf8"), "{ not json");
     writeFileSync(configPath, original);
+  });
+
+  it("updates reviewStatus and statusCheckedAt via recordStatusRefresh", () => {
+    const config = loadConfig();
+    recordInstall(config as never, {
+      namespace: "acme",
+      name: "hello",
+      version: "1.0.0",
+      author: "x",
+      trust: "unknown",
+      installedAt: new Date().toISOString(),
+      source: "test",
+    } as never);
+    recordStatusRefresh(loadConfig() as never, "acme/hello@1.0.0", { reviewStatus: "verified" });
+    const reloaded = loadConfig() as { installed?: Record<string, { reviewStatus?: string; statusCheckedAt?: string }> };
+    const record = reloaded.installed?.["acme/hello@1.0.0"];
+    assert.equal(record?.reviewStatus, "verified");
+    assert.ok(record?.statusCheckedAt);
+  });
+
+  it("recordStatusRefresh is a no-op for unknown agents", () => {
+    recordStatusRefresh(loadConfig() as never, "nope/nope@9.9.9", { reviewStatus: "rejected" });
+    const reloaded = loadConfig() as { installed?: Record<string, unknown> };
+    assert.equal(reloaded.installed?.["nope/nope@9.9.9"], undefined);
   });
 });

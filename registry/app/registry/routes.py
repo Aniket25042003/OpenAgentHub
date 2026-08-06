@@ -9,7 +9,10 @@ from app.config import get_settings
 from app.db import get_session
 from app.ratelimit import RateLimitRule, enforce
 from app.entitlements.application import QuotaExceeded, check_publish_rate
-from app.identity.application import require_active_user, require_reviewer_or_admin
+from app.identity.application import (
+    require_active_user,
+    resolve_cookie_reviewer_or_admin,
+)
 from app.registry import application
 from app.registry.catalog import CatalogQueryError, load_catalog_page
 from app.registry.cache import get_catalog_cache
@@ -286,13 +289,15 @@ async def trigger_scan(
 ):
     _write_limits(request, user)
     try:
-        scan_status, findings = await application.trigger_rescan(session, namespace, name, version)
+        scan_status, findings = await application.trigger_rescan(session, user, namespace, name, version)
     except VersionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ScanInProgress as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc), headers={"Retry-After": "10"}
         ) from exc
+    except RegistryError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     await session.commit()
     return {"status": scan_status, "findings": findings}
 
@@ -305,7 +310,7 @@ async def review_version(
     req: ReviewRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_reviewer_or_admin),
+    user = Depends(resolve_cookie_reviewer_or_admin),
 ):
     _write_limits(request, user)
     try:
@@ -375,7 +380,7 @@ async def yank_version(
     req: YankRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_reviewer_or_admin),
+    user = Depends(require_active_user),
 ):
     _write_limits(request, user)
     try:
@@ -384,5 +389,7 @@ async def yank_version(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except VersionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RegistryError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     await session.commit()
     return {"ok": True, "yanked": req.yanked, "changed": changed}

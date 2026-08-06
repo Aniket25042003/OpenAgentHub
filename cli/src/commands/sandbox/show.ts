@@ -9,7 +9,7 @@ import {
   effectiveSandbox,
   requestedSandbox,
 } from "@openagenthub/runtime";
-import { checkRevocationBeforeRun, installedIsFresh } from "../../lib/revocation.js";
+import { checkRevocationBeforeRun } from "../../lib/revocation.js";
 import { parseSpec } from "../../lib/installer.js";
 import { resolveInstalledOrThrow } from "../../lib/resolve.js";
 import { resolveRegistryUrl, resolveToken } from "../../lib/credentials.js";
@@ -52,7 +52,7 @@ export default class SandboxShow extends Command {
       registryUrl,
       resolveToken(registryUrl),
     );
-    const statusFresh = revCheck.statusFresh && installedIsFresh(installed);
+    const statusFresh = revCheck.statusFresh;
     if (revCheck.staleWarning) this.warn(revCheck.staleWarning);
     if (revCheck.blocked) this.warn(`blocked: ${revCheck.blocked}`);
 

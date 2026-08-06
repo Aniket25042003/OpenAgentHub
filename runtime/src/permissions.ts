@@ -73,6 +73,18 @@ export function recordInstall(config: OpenAgentHubConfig, agent: InstalledAgent)
   saveConfig(config);
 }
 
+export function recordStatusRefresh(
+  config: OpenAgentHubConfig,
+  key: string,
+  status: { reviewStatus?: string; blockedReason?: string },
+): void {
+  const record = config.installed?.[key];
+  if (!record) return;
+  record.reviewStatus = status.reviewStatus;
+  record.statusCheckedAt = new Date().toISOString();
+  saveConfig(config);
+}
+
 export function grantedPermissions(config: OpenAgentHubConfig, agentKey: string): GrantedPermissions {
   return config.permissions?.[agentKey] ?? {};
 }

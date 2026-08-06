@@ -56,6 +56,8 @@ export interface OahInstalledAgent {
   installedAt: string;
   source: string;
   path: string;
+  reviewStatus?: string;
+  statusCheckedAt?: string;
 }
 
 export interface HostInfo {

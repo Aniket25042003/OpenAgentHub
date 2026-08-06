@@ -6,7 +6,7 @@ import pytest
 
 APP_ROOT = pathlib.Path(__file__).resolve().parents[1] / "app"
 
-MODULES = ("identity", "registry", "security_review", "organizations", "entitlements", "audit", "outbox", "workers")
+MODULES = ("identity", "registry", "security_review", "organizations", "publisher", "entitlements", "audit", "outbox", "workers")
 
 
 def _imports(module_path: pathlib.Path) -> list[str]:
@@ -103,6 +103,11 @@ def test_openapi_exposes_all_router_paths():
         "/api/v1/agents/{namespace}/{name}/versions/{version}/archive",
         "/api/v1/agents/{namespace}/{name}/versions/{version}/scan",
         "/api/v1/catalog",
+        "/api/v1/me/overview",
+        "/api/v1/me/namespaces",
+        "/api/v1/me/packages",
+        "/api/v1/me/activity",
+        "/api/v1/admin/review-queue",
         "/health",
         "/ready",
         "/metrics",
@@ -129,6 +134,8 @@ ALLOWED_CROSS_MODULE = {
     "registry/application.py": {"security_review", "audit", "outbox", "identity", "entitlements"},
     "registry/routes.py": {"identity", "entitlements"},
     "registry/catalog.py": {"registry", "identity"},
+    "publisher/application.py": {"registry", "identity", "audit"},
+    "publisher/routes.py": {"identity"},
     "entitlements/application.py": {"audit", "identity"},
     "identity/application.py": {"audit"},
     "identity/sessions.py": {"audit"},

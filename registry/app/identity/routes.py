@@ -16,6 +16,7 @@ from app.identity.application import (
     register_signing_key,
     require_active_user,
     require_admin,
+    resolve_cookie_user,
     revoke_signing_key,
     suspend_user,
 )
@@ -242,30 +243,3 @@ async def logout(request: Request):
         media_type="application/json",
         headers={"set-cookie": f"{settings.session_cookie_name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"},
     )
-
-
-async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
-    token = request.cookies.get(get_settings().session_cookie_name)
-    if not token:
-        bearer = request.headers.get("authorization", "")
-        if bearer.startswith("Bearer "):
-            user = await _user_from_bearer(bearer.removeprefix("Bearer ").strip(), session)
-            if user is not None:
-                return user
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not signed in")
-    user, _ = await sess.session_user(session, token)
-    return user
-
-
-async def _user_from_bearer(token: str, session: AsyncSession) -> User | None:
-    from app.identity.application import decode_token, _user_from_session
-
-    try:
-        payload = decode_token(token)
-        user_id = int(payload["sub"])
-        user = await session.get(User, user_id)
-        if user is not None:
-            return user
-    except (HTTPException, KeyError, ValueError):
-        pass
-    return await _user_from_session(session, token)

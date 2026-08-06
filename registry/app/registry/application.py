@@ -88,12 +88,13 @@ class ScanInProgress(RegistryError):
     pass
 
 
-REVIEW_ACTIONS = ("verify", "warning", "reject", "revoke")
+REVIEW_ACTIONS = ("verify", "warning", "reject", "revoke", "request")
 REVIEW_STATUS_BY_ACTION = {
     "verify": "verified",
     "warning": "warning",
     "reject": "rejected",
     "revoke": "revoked",
+    "request": "changes_requested",
 }
 
 
@@ -400,7 +401,7 @@ async def publish_version(
     return PublishResult(security=security_status, findings=findings)
 
 
-async def trigger_rescan(session: AsyncSession, namespace: str, name: str, version: str) -> tuple[str, list[str]]:
+async def trigger_rescan(session: AsyncSession, user: User, namespace: str, name: str, version: str) -> tuple[str, list[str]]:
     from app.security_review.application import ScanTargetMissing, rescan_version
 
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
@@ -409,6 +410,8 @@ async def trigger_rescan(session: AsyncSession, namespace: str, name: str, versi
     ver = await _resolve_version(session, agent, version)
     if ver is None:
         raise VersionNotFound("version not found")
+
+    await _require_namespace_or_reviewer(session, user, namespace)
     last = ver.scan_requested_at
     cooldown = get_settings().rescan_cooldown_seconds
     if last is not None and cooldown > 0 and (datetime.now(timezone.utc) - last.replace(tzinfo=timezone.utc)).total_seconds() < cooldown:
@@ -446,6 +449,8 @@ async def review_version(
     ver = await _resolve_version(session, agent, version)
     if ver is None:
         raise VersionNotFound("version not found")
+    if user.role != "admin" and ver.published_by_id == user.id:
+        raise RegistryError("you cannot review a version you published")
 
     status = REVIEW_STATUS_BY_ACTION[action]
     signer = await _signer_key(session, ver)
@@ -555,6 +560,7 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
     ver = await _resolve_version(session, agent, version)
     if ver is None:
         raise VersionNotFound("version not found")
+    await _require_namespace_or_reviewer(session, user, namespace)
     changed = VersionRepository(session).set_yanked(ver, yanked)
     if changed:
         await AuditRepository(session).record(
@@ -566,3 +572,11 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
         )
         await bump_catalog(session)
     return changed
+
+
+async def _require_namespace_or_reviewer(session: AsyncSession, user: User, namespace: str) -> None:
+    repo = NamespaceRepository(session)
+    ns = await repo.by_name(namespace)
+    member = await repo.is_member(ns, user.id) if ns is not None else None
+    if member is None and user.role not in ("reviewer", "admin"):
+        raise RegistryError("you are not a member of this namespace")
