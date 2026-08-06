@@ -120,8 +120,8 @@ export default class SupervisorRun extends Command {
       const current = readRun(record.runId) ?? record;
       writeRun({
         ...current,
-        state: code === 0 ? "exited" : "failed",
-        exitCode: code,
+        state: reason === "manual-stop" ? "exited" : code === 0 ? "exited" : "failed",
+        exitCode: reason === "manual-stop" ? 0 : code,
         exitReason: reason,
         endedAt: new Date().toISOString(),
       });
@@ -174,7 +174,7 @@ export default class SupervisorRun extends Command {
           ? "manual-stop"
           : result.result.timedOut
             ? "timeout"
-            : result.result.exitCode === 137
+            : result.sandbox === "container" && result.result.exitCode === 137
               ? "oom"
               : "exit";
       writeRun({
