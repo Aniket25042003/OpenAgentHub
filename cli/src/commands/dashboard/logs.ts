@@ -35,7 +35,8 @@ export default class Logs extends Command {
           const fd = openSync(logPath, "r");
           try {
             const buffer = Buffer.alloc(size - offset);
-            readSync(fd, buffer, 0, buffer.length, offset);
+            const bytesRead = readSync(fd, buffer, 0, buffer.length, offset);
+            this.log(buffer.subarray(0, bytesRead).toString("utf8").replace(/\n$/, ""));
             this.log(buffer.toString("utf8").replace(/\n$/, ""));
           } finally {
             closeSync(fd);
