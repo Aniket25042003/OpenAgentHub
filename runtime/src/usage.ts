@@ -4,9 +4,47 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { CONTROL_DIR } from "./config.js";
 
 export const USAGE_DB_PATH = join(CONTROL_DIR, "usage.db");
-export const USAGE_SCHEMA_VERSION = 1;
+export const USAGE_SCHEMA_VERSION = 2;
 export const USAGE_RETENTION_KEYS = ["retention.days", "retention.max_runs"] as const;
 export const USAGE_FILE_ENV = "AGENT_USAGE_FILE";
+
+export type UsageProvider = "claude" | "codex" | "opencode";
+
+export interface ExternalUsageRow {
+  provider: UsageProvider;
+  source: string;
+  sessionId?: string;
+  model?: string;
+  tokensIn: number;
+  tokensOut: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  costExact?: number;
+  costEstimated?: number;
+  occurredAt: string;
+  eventKey: string;
+}
+
+export interface LimitRow {
+  provider: UsageProvider;
+  window: string;
+  plan?: string;
+  usedPercent?: number;
+  units?: string;
+  creditsUsed?: number;
+  creditsTotal?: number;
+  resetAt?: string;
+  observedAt: string;
+  source: "local" | "live" | "manual";
+}
+
+export interface SourceCursor {
+  source: string;
+  size: number;
+  mtimeMs: number;
+  offset: number;
+  seenAt: string;
+}
 
 export interface RunFacts {
   runId: string;
@@ -93,6 +131,55 @@ const MIGRATIONS: string[] = [
   CREATE TABLE settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+  );
+  `,
+  `
+  CREATE TABLE external_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    source TEXT NOT NULL,
+    session_id TEXT,
+    model TEXT,
+    tokens_in INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0,
+    cache_read INTEGER NOT NULL DEFAULT 0,
+    cache_write INTEGER NOT NULL DEFAULT 0,
+    cost_exact REAL,
+    cost_estimated REAL,
+    occurred_at TEXT NOT NULL,
+    event_key TEXT NOT NULL,
+    ingested_at TEXT NOT NULL,
+    UNIQUE (provider, source, event_key)
+  );
+  CREATE INDEX idx_external_time ON external_usage(occurred_at);
+  CREATE INDEX idx_external_provider ON external_usage(provider);
+  CREATE TABLE limits (
+    provider TEXT NOT NULL,
+    window TEXT NOT NULL,
+    plan TEXT,
+    used_percent REAL,
+    units TEXT,
+    credits_used REAL,
+    credits_total REAL,
+    reset_at TEXT,
+    observed_at TEXT NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (provider, window)
+  );
+  CREATE TABLE source_cursors (
+    source TEXT PRIMARY KEY,
+    size INTEGER NOT NULL,
+    mtime_ms INTEGER NOT NULL,
+    offset INTEGER NOT NULL DEFAULT 0,
+    seen_at TEXT NOT NULL
+  );
+  CREATE TABLE codex_totals (
+    source TEXT NOT NULL,
+    model TEXT NOT NULL,
+    last_input INTEGER NOT NULL DEFAULT 0,
+    last_output INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (source, model)
   );
   `,
 ];
@@ -239,6 +326,147 @@ export class UsageStore {
     return row?.value ?? null;
   }
 
+  recordExternal(obs: ExternalUsageRow): boolean {
+    const res = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO external_usage (provider, source, session_id, model, tokens_in, tokens_out, cache_read,
+         cache_write, cost_exact, cost_estimated, occurred_at, event_key, ingested_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        obs.provider,
+        obs.source,
+        obs.sessionId ?? null,
+        obs.model ?? null,
+        obs.tokensIn,
+        obs.tokensOut,
+        obs.cacheRead ?? 0,
+        obs.cacheWrite ?? 0,
+        obs.costExact ?? null,
+        obs.costEstimated ?? null,
+        obs.occurredAt,
+        obs.eventKey,
+        new Date().toISOString(),
+      );
+    const changed = res.changes > 0;
+    if (changed) this.touch();
+    return changed;
+  }
+
+  hasExternal(provider: UsageProvider, source: string, eventKey: string): boolean {
+    return (
+      this.db.prepare("SELECT 1 FROM external_usage WHERE provider = ? AND source = ? AND event_key = ?").get(provider, source, eventKey) !==
+      undefined
+    );
+  }
+
+  upsertLimit(obs: LimitRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO limits (provider, window, plan, used_percent, units, credits_used, credits_total, reset_at, observed_at, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(provider, window) DO UPDATE SET plan = excluded.plan, used_percent = excluded.used_percent,
+         units = excluded.units, credits_used = excluded.credits_used, credits_total = excluded.credits_total,
+         reset_at = excluded.reset_at, observed_at = excluded.observed_at, source = excluded.source`,
+      )
+      .run(
+        obs.provider,
+        obs.window,
+        obs.plan ?? null,
+        obs.usedPercent ?? null,
+        obs.units ?? null,
+        obs.creditsUsed ?? null,
+        obs.creditsTotal ?? null,
+        obs.resetAt ?? null,
+        obs.observedAt,
+        obs.source,
+      );
+    this.touch();
+  }
+
+  listLimits(provider?: UsageProvider): LimitRow[] {
+    const rows = provider
+      ? this.db.prepare("SELECT * FROM limits WHERE provider = ? ORDER BY provider, window").all(provider)
+      : this.db.prepare("SELECT * FROM limits ORDER BY provider, window").all();
+    return (rows as Record<string, unknown>[]).map((r) => ({
+      provider: String(r.provider) as UsageProvider,
+      window: String(r.window),
+      plan: r.plan !== null ? String(r.plan) : undefined,
+      usedPercent: r.used_percent !== null ? Number(r.used_percent) : undefined,
+      units: r.units !== null ? String(r.units) : undefined,
+      creditsUsed: r.credits_used !== null ? Number(r.credits_used) : undefined,
+      creditsTotal: r.credits_total !== null ? Number(r.credits_total) : undefined,
+      resetAt: r.reset_at !== null ? String(r.reset_at) : undefined,
+      observedAt: String(r.observed_at),
+      source: String(r.source) as LimitRow["source"],
+    }));
+  }
+
+  listExternalUsage(provider?: UsageProvider): ExternalUsageRow[] {
+    const rows = provider
+      ? this.db.prepare("SELECT * FROM external_usage WHERE provider = ? ORDER BY occurred_at").all(provider)
+      : this.db.prepare("SELECT * FROM external_usage ORDER BY occurred_at").all();
+    return (rows as Record<string, unknown>[]).map((r) => ({
+      provider: String(r.provider) as UsageProvider,
+      source: String(r.source),
+      sessionId: r.session_id !== null ? String(r.session_id) : undefined,
+      model: r.model !== null ? String(r.model) : undefined,
+      tokensIn: Number(r.tokens_in),
+      tokensOut: Number(r.tokens_out),
+      cacheRead: Number(r.cache_read),
+      cacheWrite: Number(r.cache_write),
+      costExact: r.cost_exact !== null ? Number(r.cost_exact) : undefined,
+      costEstimated: r.cost_estimated !== null ? Number(r.cost_estimated) : undefined,
+      occurredAt: String(r.occurred_at),
+      eventKey: String(r.event_key),
+    }));
+  }
+
+  clearProviderUsage(provider: UsageProvider): { usage: number; limits: number } {
+    const usage = Number((this.db.prepare("DELETE FROM external_usage WHERE provider = ?").run(provider) as { changes: number }).changes);
+    const limits = Number((this.db.prepare("DELETE FROM limits WHERE provider = ?").run(provider) as { changes: number }).changes);
+    this.touch();
+    return { usage, limits };
+  }
+
+  getSourceCursor(source: string): SourceCursor | null {
+    const row = this.db.prepare("SELECT * FROM source_cursors WHERE source = ?").get(source) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      source: String(row.source),
+      size: Number(row.size),
+      mtimeMs: Number(row.mtime_ms),
+      offset: Number(row.offset),
+      seenAt: String(row.seen_at),
+    };
+  }
+
+  setSourceCursor(source: string, size: number, mtimeMs: number, offset: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO source_cursors (source, size, mtime_ms, offset, seen_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(source) DO UPDATE SET size = excluded.size, mtime_ms = excluded.mtime_ms, offset = excluded.offset, seen_at = excluded.seen_at`,
+      )
+      .run(source, size, mtimeMs, offset, new Date().toISOString());
+  }
+
+  getCodexTotal(source: string, model: string): { lastInput: number; lastOutput: number } | null {
+    const row = this.db.prepare("SELECT * FROM codex_totals WHERE source = ? AND model = ?").get(source, model) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return { lastInput: Number(row.last_input), lastOutput: Number(row.last_output) };
+  }
+
+  setCodexTotal(source: string, model: string, lastInput: number, lastOutput: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO codex_totals (source, model, last_input, last_output, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(source, model) DO UPDATE SET last_input = excluded.last_input, last_output = excluded.last_output, updated_at = excluded.updated_at`,
+      )
+      .run(source, model, lastInput, lastOutput, new Date().toISOString());
+  }
+
   pruneCandidates(opts: PruneOptions): string[] {
     const ids = new Set<string>();
     if (opts.olderThanDays !== undefined && opts.olderThanDays >= 0) {
@@ -296,20 +524,31 @@ export class UsageStore {
     return rows.length;
   }
 
-  exportData(): { runs: unknown[]; usage: unknown[]; resources: unknown[]; settings: Record<string, string> } {
+  exportData(): {
+    runs: unknown[];
+    usage: unknown[];
+    resources: unknown[];
+    settings: Record<string, string>;
+    external: unknown[];
+    limits: unknown[];
+  } {
     const runs = this.db.prepare("SELECT * FROM runs ORDER BY created_at").all();
     const usage = this.db.prepare("SELECT * FROM token_usage ORDER BY recorded_at").all();
     const resources = this.db.prepare("SELECT * FROM resource_samples ORDER BY sampled_at").all();
+    const external = this.db.prepare("SELECT * FROM external_usage ORDER BY occurred_at").all();
+    const limits = this.db.prepare("SELECT * FROM limits ORDER BY provider, window").all();
     const settingsRows = this.db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
     const settings: Record<string, string> = {};
     for (const row of settingsRows) settings[row.key] = row.value;
-    return { runs, usage, resources, settings };
+    return { runs, usage, resources, settings, external, limits };
   }
 
   deleteAll(): void {
     this.db.exec("BEGIN;");
     try {
-      this.db.exec("DELETE FROM token_usage; DELETE FROM resource_samples; DELETE FROM runs; DELETE FROM settings;");
+      this.db.exec(
+        "DELETE FROM token_usage; DELETE FROM resource_samples; DELETE FROM runs; DELETE FROM settings; DELETE FROM external_usage; DELETE FROM limits; DELETE FROM source_cursors; DELETE FROM codex_totals;",
+      );
       this.db.exec("COMMIT;");
     } catch (err) {
       this.db.exec("ROLLBACK;");
