@@ -349,7 +349,12 @@ export async function stopDaemon(): Promise<{ outcome: StopDaemonOutcome; state:
   try {
     process.kill(state.pid, "SIGTERM");
   } catch {
+  try {
+    process.kill(state.pid, "SIGTERM");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ESRCH") return { outcome: "stale", state };
     return { outcome: "failed", state };
+  }
   }
   const deadline = Date.now() + CONTROL_STOP_TIMEOUT_MS;
   while (Date.now() < deadline && isProcessAlive(state.pid)) {
