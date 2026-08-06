@@ -9,12 +9,18 @@ from app.config import get_settings
 from app.db import dispose_db, init_db, ping_db
 from app.identity.routes import auth_router as identity_auth_router
 from app.identity.routes import router as identity_router
+from app.organizations.routes import router as organizations_router
 from app.outbox.dispatcher import OutboxDispatcher
 from app.publisher.routes import router as publisher_router
 from app.ratelimit import RateLimitExceeded
 from app.registry.downloads import get_download_buffer
 from app.registry.routes import router as registry_router
-from app.telemetry import configure_logging, get_logger, metrics, request_metrics_middleware
+from app.telemetry import (
+    configure_logging,
+    get_logger,
+    metrics,
+    request_metrics_middleware,
+)
 
 log = get_logger("main")
 
@@ -23,7 +29,9 @@ log = get_logger("main")
 async def lifespan(app: FastAPI):
     configure_logging()
     await init_db()
-    dispatcher = OutboxDispatcher(poll_interval=get_settings().outbox_poll_interval_seconds)
+    dispatcher = OutboxDispatcher(
+        poll_interval=get_settings().outbox_poll_interval_seconds
+    )
     dispatcher.start()
     app.state.dispatcher = dispatcher
     settings = get_settings()
@@ -51,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(identity_auth_router)
     app.include_router(registry_router)
     app.include_router(publisher_router)
+    app.include_router(organizations_router)
 
     @app.exception_handler(RateLimitExceeded)
     async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
@@ -59,7 +68,9 @@ def create_app() -> FastAPI:
             headers["X-RateLimit-Limit"] = str(exc.limit)
         if exc.window_seconds is not None:
             headers["X-RateLimit-Window"] = str(exc.window_seconds)
-        return JSONResponse(status_code=429, content={"detail": str(exc)}, headers=headers)
+        return JSONResponse(
+            status_code=429, content={"detail": str(exc)}, headers=headers
+        )
 
     @app.get("/health")
     async def health():
@@ -83,12 +94,16 @@ def create_app() -> FastAPI:
             checks["storage"] = "error"
             ready = False
         if not ready:
-            return JSONResponse(status_code=503, content={"status": "not_ready", "checks": checks})
+            return JSONResponse(
+                status_code=503, content={"status": "not_ready", "checks": checks}
+            )
         return {"status": "ready", "checks": checks}
 
     @app.get("/metrics")
     async def metrics_endpoint():
-        return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
+        return PlainTextResponse(
+            metrics.render(), media_type="text/plain; version=0.0.4"
+        )
 
     return app
 
