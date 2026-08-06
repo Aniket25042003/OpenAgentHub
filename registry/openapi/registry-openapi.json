@@ -14,6 +14,40 @@
         "title": "AcceptInviteRequest",
         "type": "object"
       },
+      "AccountDeleteRequest": {
+        "properties": {
+          "confirm": {
+            "default": "",
+            "title": "Confirm",
+            "type": "string"
+          }
+        },
+        "title": "AccountDeleteRequest",
+        "type": "object"
+      },
+      "AccountDeleteResponse": {
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "default": "deleted",
+            "title": "Status",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "AccountDeleteResponse",
+        "type": "object"
+      },
       "ActivityItem": {
         "properties": {
           "action": {
@@ -591,6 +625,67 @@
           "items"
         ],
         "title": "AuditLogResponse",
+        "type": "object"
+      },
+      "AuthMeResponse": {
+        "properties": {
+          "agreements": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Agreements",
+            "type": "object"
+          },
+          "avatarUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatarurl"
+          },
+          "githubId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Githubid"
+          },
+          "role": {
+            "default": "publisher",
+            "title": "Role",
+            "type": "string"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionInfo"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "agreements",
+          "sessions"
+        ],
+        "title": "AuthMeResponse",
         "type": "object"
       },
       "BillingPlanRequest": {
@@ -2292,6 +2387,73 @@
           "field"
         ],
         "title": "SecurityDiffField",
+        "type": "object"
+      },
+      "SecurityEventInfo": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Detail",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "targetId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetid"
+          },
+          "targetType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targettype"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "createdAt"
+        ],
+        "title": "SecurityEventInfo",
+        "type": "object"
+      },
+      "SecurityEventsResponse": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityEventInfo"
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "SecurityEventsResponse",
         "type": "object"
       },
       "SecurityReport": {
@@ -4614,6 +4776,44 @@
         "summary": "Update Agreements"
       }
     },
+    "/api/v1/me/delete": {
+      "post": {
+        "operationId": "delete_my_account_api_v1_me_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete My Account"
+      }
+    },
     "/api/v1/me/namespaces": {
       "get": {
         "operationId": "namespaces_api_v1_me_namespaces_get",
@@ -4731,6 +4931,64 @@
           }
         },
         "summary": "Version Identity"
+      }
+    },
+    "/api/v1/me/profile": {
+      "get": {
+        "operationId": "my_profile_api_v1_me_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthMeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "My Profile"
+      }
+    },
+    "/api/v1/me/security-events": {
+      "get": {
+        "operationId": "my_security_events_api_v1_me_security_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityEventsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Security Events"
       }
     },
     "/api/v1/namespaces": {

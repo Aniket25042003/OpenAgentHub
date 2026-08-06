@@ -173,6 +173,17 @@ class TeamRepository:
         self.session.add(row)
         return row
 
+    async def memberships_for_user(self, user_id: int) -> list[TeamMember]:
+        return (
+            (
+                await self.session.execute(
+                    select(TeamMember).where(TeamMember.user_id == user_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
 
 class InvitationRepository:
     def __init__(self, session: AsyncSession) -> None:

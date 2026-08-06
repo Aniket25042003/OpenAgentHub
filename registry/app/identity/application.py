@@ -36,6 +36,10 @@ class UserNotFound(IdentityError):
     status_code = status.HTTP_404_NOT_FOUND
 
 
+class AccountDeletionBlocked(IdentityError):
+    status_code = status.HTTP_409_CONFLICT
+
+
 def issue_token(user_id: int, username: str) -> str:
     settings = get_settings()
     now = int(time.time())
@@ -218,6 +222,30 @@ async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
     return user
 
 
+async def resolve_cookie_session_only(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    """Resolve the user from the interactive cookie only — never a bearer token.
+
+    Dangerous account operations (e.g. account deletion) must come from the
+    browser session, not a possibly-leaked read-only API token or a JWT that
+    outlived a suspension.
+    """
+    from app.identity.sessions import session_user
+
+    token = request.cookies.get(get_settings().session_cookie_name)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="interactive session required",
+        )
+    user, _ = await session_user(session, token, rotate=False)
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account is suspended")
+    return user
+
+
 async def resolve_cookie_active_user(
     request: Request, session: AsyncSession = Depends(get_session)
 ) -> User:
@@ -316,9 +344,54 @@ async def login_with_github(session: AsyncSession, code: str) -> User:
     if user is None:
         user = await repo.create(username=username, github_id=github_id, avatar_url=avatar_url)
     else:
+        if user.status == "deleted":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account has been deleted")
         user.username = username
         user.avatar_url = avatar_url or user.avatar_url
     return user
+
+
+async def recent_security_events(session: AsyncSession, user: User, *, limit: int = 50) -> list:
+    return await AuditRepository(session).recent_for_actor(actor_id=user.id, limit=limit)
+
+
+async def ensure_account_deletable(session: AsyncSession, user: User) -> None:
+    """Preconditions for account deletion; raises AccountDeletionBlocked otherwise.
+
+    Runs before any destructive mutation so a blocked deletion never leaves the
+    account half-closed (all credentials revoked but status still active).
+    """
+    from app.organizations.repositories import OrganizationRepository
+
+    org_repo = OrganizationRepository(session)
+    for org, _role in await org_repo.for_user(user.id):
+        member = await org_repo.membership(org, user.id)
+        if member is not None and member.is_owner:
+            owners = [m for m in await org_repo.members(org) if m.is_owner]
+            if len(owners) <= 1:
+                raise AccountDeletionBlocked(
+                    f"transfer ownership of '{org.slug}' before deleting your account"
+                )
+
+
+async def delete_account(session: AsyncSession, user: User) -> None:
+    """Permanently close the account: validate, revoke credentials, leave every
+    organization, mark the user deleted, and audit the closure."""
+    from app.organizations.application import remove_user_memberships
+
+    await ensure_account_deletable(session, user)
+    await SessionRepository(session).revoke_all_for_user(user.id)
+    await ApiTokenRepository(session).revoke_all_for_user(user.id)
+    await SigningKeyRepository(session).revoke_all_for_user(user.id)
+    await remove_user_memberships(session, user)
+    user.status = "deleted"
+    await AuditRepository(session).record(
+        actor_id=user.id,
+        action="account.deleted",
+        target_type="user",
+        target_id=user.id,
+        detail={"username": user.username},
+    )
 
 
 async def register_signing_key(
