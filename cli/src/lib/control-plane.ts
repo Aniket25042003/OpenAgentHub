@@ -1,10 +1,13 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
+  closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -151,6 +154,10 @@ export function daemonNeedsRestart(state: DaemonState): boolean {
   return state.protocolVersion < CONTROL_PROTOCOL_VERSION || state.productVersion !== productVersion();
 }
 
+export function validPort(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= 65535;
+}
+
 export function selectPort(preferred: number = CONTROL_PREFERRED_PORT): Promise<number> {
   return new Promise((resolve, reject) => {
     const attempt = (candidate: number, triesLeft: number): void => {
@@ -242,6 +249,16 @@ async function waitForHealth(port: number, timeoutMs: number): Promise<boolean> 
   return false;
 }
 
+export async function waitForReadyState(timeoutMs: number): Promise<DaemonState | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const state = readState();
+    if (state && state.health === "ready") return state;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return null;
+}
+
 export async function fetchControl<T = unknown>(port: number, path: string, opts: { method?: string; token?: string } = {}): Promise<T | null> {
   try {
     const res = await fetch(`http://${CONTROL_BOUND_HOST}:${port}${path}`, {
@@ -271,6 +288,7 @@ function spawnDaemon(port: number): void {
     stdio: ["ignore", logFd, logFd],
   });
   child.unref();
+  closeSync(logFd);
 }
 
 export interface EnsureResult {
@@ -287,7 +305,7 @@ export async function ensureDaemon(): Promise<EnsureResult> {
       await stopDaemon();
       clearState();
     } else if (await waitForHealth(existing.port, 2000)) {
-      return { state: existing, started: false };
+      return { state: (await waitForReadyState(2000)) ?? existing, started: false };
     } else if (!isProcessAlive(existing.pid)) {
       clearState();
     }
@@ -297,7 +315,9 @@ export async function ensureDaemon(): Promise<EnsureResult> {
     const deadline = Date.now() + CONTROL_HEALTH_TIMEOUT_MS;
     while (Date.now() < deadline) {
       const rival = readState();
-      if (rival && (await waitForHealth(rival.port, 2000))) return { state: rival, started: false };
+      if (rival && (await waitForHealth(rival.port, 2000))) {
+        return { state: (await waitForReadyState(2000)) ?? rival, started: false };
+      }
       await new Promise((r) => setTimeout(r, 250));
     }
     throw new Error("another control plane start is in progress but never became healthy");
@@ -306,7 +326,7 @@ export async function ensureDaemon(): Promise<EnsureResult> {
   try {
     const again = readState();
     if (again && identityMatches(again) && !daemonNeedsRestart(again) && (await waitForHealth(again.port, 2000))) {
-      return { state: again, started: false };
+      return { state: (await waitForReadyState(2000)) ?? again, started: false };
     }
     if (again && identityMatches(again)) await stopDaemon();
     const port = await selectPort(CONTROL_PREFERRED_PORT);
@@ -315,40 +335,47 @@ export async function ensureDaemon(): Promise<EnsureResult> {
     if (!(await waitForHealth(port, CONTROL_HEALTH_TIMEOUT_MS))) {
       throw new Error(`control plane failed to become healthy on port ${port}; see ${CONTROL_LOG_PATH}`);
     }
-    const state = readState();
-    if (!state) throw new Error("control plane started but state is missing");
+    const state = await waitForReadyState(5000);
+    if (!state) throw new Error(`control plane is healthy on port ${port} but never reported a ready state; see ${CONTROL_LOG_PATH}`);
     return { state, started: true };
   } finally {
     releaseLock();
   }
 }
 
-export async function stopDaemon(): Promise<boolean> {
+export type StopDaemonOutcome = "stopped" | "stale" | "failed";
+
+export async function stopDaemon(): Promise<{ outcome: StopDaemonOutcome; state: DaemonState | null }> {
   const state = readState();
-  if (!state) return false;
+  if (!state) return { outcome: "stopped", state: null };
   if (!identityMatches(state)) {
     clearState();
-    return false;
+    return { outcome: "stale", state };
   }
   try {
     process.kill(state.pid, "SIGTERM");
-  } catch {
-    return false;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ESRCH") return { outcome: "stale", state };
+    return { outcome: "failed", state };
   }
   const deadline = Date.now() + CONTROL_STOP_TIMEOUT_MS;
   while (Date.now() < deadline && isProcessAlive(state.pid)) {
     await new Promise((r) => setTimeout(r, 100));
   }
-  return !isProcessAlive(state.pid);
+  if (!isProcessAlive(state.pid)) return { outcome: "stopped", state };
+  return { outcome: "failed", state };
 }
 
 export async function restartDaemon(): Promise<EnsureResult> {
-  await stopDaemon();
+  const result = await stopDaemon();
+  if (result.outcome === "failed") {
+    throw new Error(`control plane did not stop in time (pid ${result.state?.pid}); state preserved, refusing to start a second daemon`);
+  }
   return ensureDaemon();
 }
 
 export function readLogTail(lines: number = 100): string {
-  const files = logFilenames();
+  const files = [...logFilenames()].reverse();
   if (files.length === 0) return "";
   const chunks: string[] = [];
   let remaining = lines;
@@ -356,14 +383,45 @@ export function readLogTail(lines: number = 100): string {
     if (remaining <= 0) break;
     try {
       const text = readFileSync(file, "utf8");
-      const tail = text.split("\n").slice(-remaining);
-      chunks.unshift(tail.join("\n"));
+      const lines = text.split("\n");
+      if (lines.at(-1) === "") lines.pop();
+      const tail = lines.slice(-remaining);
+      chunks.push(tail.join("\n"));
       remaining -= tail.length;
     } catch {
       /* skip */
     }
   }
   return chunks.join("\n").replace(/^\n+/, "");
+}
+
+export interface LogFollowState {
+  offset: number;
+  identity: string;
+}
+
+export function initLogFollow(logPath: string): LogFollowState {
+  const st = statSync(logPath);
+  return { offset: st.size, identity: `${st.dev}:${st.ino}` };
+}
+
+export function readLogFollow(logPath: string, state: LogFollowState): { next: LogFollowState; line: string | null } {
+  const st = statSync(logPath);
+  const identity = `${st.dev}:${st.ino}`;
+  let offset = state.offset;
+  if (identity !== state.identity || st.size < offset) {
+    offset = 0;
+  }
+  if (st.size <= offset) return { next: { offset, identity }, line: null };
+  const fd = openSync(logPath, "r");
+  try {
+    const buffer = Buffer.alloc(st.size - offset);
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, offset);
+    const line = bytesRead > 0 ? buffer.subarray(0, bytesRead).toString("utf8").replace(/\n$/, "") : null;
+    return { next: { offset: fstatSync(fd).size, identity }, line };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export async function openUrl(url: string): Promise<void> {
@@ -381,7 +439,11 @@ export async function runDaemon(): Promise<void> {
     clearState();
     process.exit(0);
   }
-  const port = Number(process.env.PORT);
+  const rawPort = Number(process.env.PORT);
+  const port = validPort(rawPort) ? rawPort : await selectPort(CONTROL_PREFERRED_PORT);
+  process.env.PORT = String(port);
+  process.env.OPENAGENTHUB_LOCAL_TOKEN = process.env.OPENAGENTHUB_LOCAL_TOKEN ?? readToken();
+  process.env.OPENAGENTHUB_PRODUCT_VERSION = process.env.OPENAGENTHUB_PRODUCT_VERSION ?? productVersion();
   const startedAt = new Date().toISOString();
   const state: DaemonState = {
     pid: process.pid,
@@ -428,17 +490,21 @@ export const CONTROL_PLANS = {
 };
 
 export async function autostartEnable(): Promise<void> {
+  const daemonPort = Number(process.env.PORT);
+  const port = validPort(daemonPort) ? daemonPort : CONTROL_PREFERRED_PORT;
+  const token = readToken();
+  const version = productVersion();
   if (process.platform === "darwin") {
     const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${LAUNCHD_LABEL}</string>
+  <string>${xmlEscape(LAUNCHD_LABEL)}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${process.execPath}</string>
-    <string>${BIN_PATH}</string>
+    <string>${xmlEscape(process.execPath)}</string>
+    <string>${xmlEscape(BIN_PATH)}</string>
     <string>daemon</string>
   </array>
   <key>RunAtLoad</key>
@@ -448,12 +514,18 @@ export async function autostartEnable(): Promise<void> {
   <key>EnvironmentVariables</key>
   <dict>
     <key>AGENT_HOME</key>
-    <string>${AGENT_HOME}</string>
+    <string>${xmlEscape(AGENT_HOME)}</string>
+    <key>PORT</key>
+    <string>${port}</string>
+    <key>OPENAGENTHUB_LOCAL_TOKEN</key>
+    <string>${xmlEscape(token)}</string>
+    <key>OPENAGENTHUB_PRODUCT_VERSION</key>
+    <string>${xmlEscape(version)}</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>${CONTROL_LOG_PATH}</string>
+  <string>${xmlEscape(CONTROL_LOG_PATH)}</string>
   <key>StandardErrorPath</key>
-  <string>${CONTROL_LOG_PATH}</string>
+  <string>${xmlEscape(CONTROL_LOG_PATH)}</string>
 </dict>
 </plist>
 `;
@@ -468,8 +540,11 @@ Description=OpenAgentHub control plane
 After=network.target
 
 [Service]
-ExecStart=${process.execPath} ${BIN_PATH} daemon
-Environment=AGENT_HOME=${AGENT_HOME}
+ExecStart=${systemdArg(process.execPath)} ${systemdArg(BIN_PATH)} daemon
+Environment=${systemdEnv("AGENT_HOME", AGENT_HOME)}
+Environment=PORT=${port}
+Environment=${systemdEnv("OPENAGENTHUB_LOCAL_TOKEN", token)}
+Environment=${systemdEnv("OPENAGENTHUB_PRODUCT_VERSION", version)}
 Restart=always
 RestartSec=2
 
@@ -483,6 +558,21 @@ WantedBy=default.target
     return;
   }
   throw new ControlPlaneDisabledError("autostart is not implemented on this platform; start the daemon manually");
+}
+
+function xmlEscape(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+function systemdArg(value: string): string {
+  let out = value.replace(/%/g, "%%").replace(/\\/g, "\\\\").replace(/[\n\r\t]/g, " ");
+  out = out.replace(/"/g, '\\"');
+  return /\s/.test(out) ? `"${out}"` : out;
+}
+
+function systemdEnv(name: string, value: string): string {
+  const out = value.replace(/%/g, "%%").replace(/\\/g, "\\\\").replace(/[\n\r\t]/g, " ");
+  return /\s/.test(out) ? `Environment=${name}="${out}"` : `Environment=${name}=${out}`;
 }
 
 export async function autostartDisable(): Promise<void> {

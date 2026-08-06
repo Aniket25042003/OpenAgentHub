@@ -1,4 +1,5 @@
 import { Command } from "@oclif/core";
+import type { EnsureResult } from "../../lib/control-plane.js";
 import { CONTROL_BOUND_HOST, daemonEnabled, restartDaemon } from "../../lib/control-plane.js";
 
 export default class Restart extends Command {
@@ -8,11 +9,17 @@ export default class Restart extends Command {
     if (!daemonEnabled()) {
       this.error("control plane is disabled by OPENAGENTHUB_NO_DAEMON=1", { exit: 1 });
     }
-    const { state, started } = await restartDaemon();
+    let result: EnsureResult;
+    try {
+      result = await restartDaemon();
+    } catch (err) {
+      this.error((err as Error).message, { exit: 1 });
+    }
+    const { state, started } = result;
     this.log(
       started
         ? `control plane restarted: http://${CONTROL_BOUND_HOST}:${state.port} (pid ${state.pid})`
-        : `control plane already running: http://${CONTROL_BOUND_HOST}:${state.port} (pid ${state.pid})`,
+        : `control plane was not restarted; pid ${state.pid} is still serving http://${CONTROL_BOUND_HOST}:${state.port}`,
     );
   }
 }

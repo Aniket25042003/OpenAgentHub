@@ -120,28 +120,78 @@ describe("control-plane logs", () => {
     writeFileSync(logPath, "");
     assert.equal(m.readLogTail(10), "");
   });
+
+  it("tail honors the line budget across a trailing newline and truncation", () => {
+    const logPath = m.controlInfo().logPath;
+    for (const f of m.logFilenames()) rmSync(f, { force: true });
+    writeFileSync(logPath, "1\n2\n3\n4\n5\n");
+    assert.equal(m.readLogTail(3), "3\n4\n5");
+    writeFileSync(logPath, "1\n2\n3\n4\n5");
+    assert.equal(m.readLogTail(3), "3\n4\n5");
+  });
+
+  it("follow resets offset when the log is rotated to a larger file", () => {
+    const logPath = m.controlInfo().logPath;
+    writeFileSync(logPath, "a".repeat(200));
+    const initial = m.initLogFollow(logPath);
+    assert.equal(initial.offset, 200);
+    assert.equal(m.readLogFollow(logPath, initial).line, null);
+    rmSync(logPath, { force: true });
+    writeFileSync(logPath, "b".repeat(400));
+    const rotated = m.readLogFollow(logPath, initial);
+    assert.equal(rotated.line, "b".repeat(400));
+    assert.equal(rotated.next.offset, 400);
+    assert.notEqual(rotated.next.identity, initial.identity);
+  });
+
+  it("follow reads appended bytes and honors the read budget", () => {
+    const logPath = m.controlInfo().logPath;
+    writeFileSync(logPath, "a".repeat(100));
+    const initial = m.initLogFollow(logPath);
+    writeFileSync(logPath, "a".repeat(100) + "b".repeat(30));
+    const appended = m.readLogFollow(logPath, initial);
+    assert.equal(appended.line, "b".repeat(30));
+    assert.equal(appended.next.offset, 130);
+  });
+});
+
+describe("control-plane readiness and ports", () => {
+  it("waitForReadyState returns null on timeout while still starting", async () => {
+    m.clearState();
+    m.writeState({ pid: 123, startIdentity: "s", port: 31996, productVersion: "0.1.0", protocolVersion: 1, startedAt: "now", health: "starting" as const });
+    assert.equal(await m.waitForReadyState(150), null);
+    m.writeState({ pid: 123, startIdentity: "s", port: 31996, productVersion: "0.1.0", protocolVersion: 1, startedAt: "now", health: "stopped" as const });
+    assert.equal(await m.waitForReadyState(150), null);
+    m.writeState({ pid: 123, startIdentity: "s", port: 31996, productVersion: "0.1.0", protocolVersion: 1, startedAt: "now", health: "ready" as const });
+    assert.equal((await m.waitForReadyState(1500))?.health, "ready");
+  });
+
+  it("accepts ports in 1..65535 only", () => {
+    for (const bad of [0, -1, 65536, 1.5, NaN, Infinity]) assert.equal(m.validPort(bad), false);
+    for (const good of [1, 1024, 65535]) assert.equal(m.validPort(good), true);
+  });
 });
 
 describe("control-plane daemon integration", () => {
   const noDaemon = process.env.OPENAGENTHUB_NO_DAEMON;
   const dashboardPath = join(import.meta.dirname, "..", "dashboard", "server.js");
 
-  it("spawns one daemon concurrently and stops it safely", async () => {
-    if (!existsSync(dashboardPath) || noDaemon === "1") return;
+  it("spawns one daemon concurrently and stops it safely", async (t) => {
+    if (!existsSync(dashboardPath) || noDaemon === "1") return t.skip("dashboard build unavailable");
     const [a, b] = await Promise.all([m.ensureDaemon(), m.ensureDaemon()]);
     assert.equal(a.state.pid, b.state.pid);
     assert.equal(a.state.health, "ready");
-    assert.ok(a.started || b.started === false);
+    assert.equal([a.started, b.started].filter(Boolean).length, 1);
     const health = await m.fetchControl<{ status: string }>(a.state.port, "/api/local/v1/health");
     assert.equal(health?.status, "ok");
-    assert.equal(await m.stopDaemon(), true);
+    assert.equal((await m.stopDaemon()).outcome, "stopped");
     const after = m.readState();
     assert.ok(!after || after.health === "stopped");
     assert.equal(m.isProcessAlive(a.state.pid), false);
   });
 
-  it("restarts a live daemon whose protocol version is stale", async () => {
-    if (!existsSync(dashboardPath) || noDaemon === "1") return;
+  it("restarts a live daemon whose protocol version is stale", async (t) => {
+    if (!existsSync(dashboardPath) || noDaemon === "1") return t.skip("dashboard build unavailable");
     const first = await m.ensureDaemon();
     const statePath = m.controlInfo().statePath;
     const stale = JSON.parse(readFileSync(statePath, "utf8"));
@@ -151,6 +201,6 @@ describe("control-plane daemon integration", () => {
     assert.equal(second.started, true);
     assert.equal(second.state.protocolVersion, 1);
     assert.notEqual(second.state.pid, first.state.pid);
-    assert.equal(await m.stopDaemon(), true);
+    assert.equal((await m.stopDaemon()).outcome, "stopped");
   });
 });
