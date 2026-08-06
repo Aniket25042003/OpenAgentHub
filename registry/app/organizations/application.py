@@ -171,6 +171,13 @@ async def add_member(
         raise OrganizationError(f"user '{username}' not found")
     if await org_repo.membership(org, target.id) is not None:
         raise OrganizationConflict(f"user '{username}' is already a member")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_org_member_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
     row = await org_repo.add_member(org, target.id, role)
     await AuditRepository(session).record(
         actor_id=actor.id,
@@ -313,6 +320,13 @@ async def invite_member(
         raise OrganizationError(f"user '{username}' not found")
     if await org_repo.membership(org, target.id) is not None:
         raise OrganizationConflict(f"user '{username}' is already a member")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_org_member_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
     settings = get_settings()
     ttl = ttl_hours or settings.invitation_ttl_hours
     raw, hashed = issue_invitation_token()
@@ -358,6 +372,13 @@ async def accept_invitation(session: AsyncSession, user: User, token: str) -> di
         raise InvitationError("organization is not accepting members")
     if await org_repo.membership(org, user.id) is not None:
         raise OrganizationConflict("you are already a member")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_org_member_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
     await org_repo.add_member(org, user.id, inv.role)
     await repo.mark_accepted(inv, user.id)
     await AuditRepository(session).record(
@@ -521,6 +542,13 @@ async def create_service_account(
     sa_repo = ServiceAccountRepository(session)
     if await sa_repo.in_organization(org, name.strip()) is not None:
         raise OrganizationConflict(f"service account '{name}' already exists")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_service_account_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
     from app.identity.models import User
 
     user = await UserRepository(session).by_username(f"svc-{slug}-{name.strip().lower().replace(' ', '-')}")

@@ -62,6 +62,20 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
     await _ensure_latest_version_columns()
     await _ensure_audit_columns()
+    await _ensure_quota_columns()
+
+
+async def _ensure_quota_columns() -> None:
+    """Add M-8.9 quota columns on pre-existing databases."""
+    from sqlalchemy import text
+
+    async with _engine.begin() as conn:
+        try:
+            await conn.execute(
+                text("ALTER TABLE agent_versions ADD COLUMN archive_bytes INTEGER")
+            )
+        except Exception:  # noqa: BLE001 — column already present
+            pass
 
 
 async def _ensure_latest_version_columns() -> None:

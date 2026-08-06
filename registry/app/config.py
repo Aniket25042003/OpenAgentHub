@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     token_max_per_account: int = 50
     token_allowed_scopes: str = ""
 
+    org_quota_default_packages: int = 100
+    org_quota_default_versions: int = 500
+    org_quota_default_storage_bytes: int = 5 * 1024 * 1024 * 1024
+    org_quota_default_download_bytes_per_month: int = 100 * 1024 * 1024 * 1024
+    org_quota_default_members: int = 25
+    org_quota_default_service_accounts: int = 10
+
     @property
     def cors_origin_list(self) -> list[str]:
         if self.cors_origins.strip() == "*":

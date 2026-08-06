@@ -564,6 +564,19 @@ class AuditLogResponse(BaseModel):
     oldestEventAt: str | None = None
 
 
+class OrgQuotaUpdateRequest(BaseModel):
+    limits: dict[str, int] | None = None
+    ttlDays: int = 30
+
+
+class OrgQuotaResponse(BaseModel):
+    limits: dict[str, int]
+    usage: dict[str, int]
+    forecast: dict[str, int | None]
+    resetDate: str
+    overridesExpireAt: str | None = None
+
+
 def dt_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         return dt.isoformat() + "Z"

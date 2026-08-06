@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.ratelimit import RateLimitRule, enforce
 from app.entitlements.application import QuotaExceeded, check_publish_rate
+from app.quotas.application import QuotaExceeded as WebQuotaExceeded
 from app.identity.application import (
     require_active_user,
     require_scope,
@@ -57,6 +58,22 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1")
+
+
+async def _enforce_download_bytes(request: Request, session, org_id: int, length: int) -> None:
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_download_quota(session, org_id, bytes_to_serve=length)
+    except QuotaBlocked as exc:
+        reset = quota_app.next_period_start()
+        retry = f"bandwidth quota resets {reset}"
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"{exc}; {retry}",
+            headers={"Retry-After": "86400", "X-Quota-Reset": reset},
+        ) from exc
 
 
 def _write_limits(request: Request, user) -> None:
@@ -249,11 +266,13 @@ async def download_archive(
     enforce(request, ip_rule=RateLimitRule(settings.downloads_per_minute_by_ip, 60), bucket="dl")
     try:
         if dl is not None:
-            data, version_id = await application.download_archive_via_token(
+            data, version_id, org_id = await application.download_archive_via_token(
                 session, namespace, name, version, dl
             )
         else:
-            data, version_id = await application.download_archive(session, namespace, name, version, user)
+            data, version_id, org_id = await application.download_archive(
+                session, namespace, name, version, user
+            )
     except AgentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except VersionNotFound as exc:
@@ -262,7 +281,9 @@ async def download_archive(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ArchiveMissing as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    get_download_buffer().record(version_id)
+    if org_id is not None:
+        await _enforce_download_bytes(request, session, org_id, len(data))
+    get_download_buffer().record(version_id, organization_id=org_id, bytes=len(data))
     return Response(
         content=data,
         media_type="application/octet-stream",
@@ -349,6 +370,19 @@ async def publish_version(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (SigningKeyForbidden, NamespaceForbidden, NamespaceReserved) as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WebQuotaExceeded as exc:
+        from app.quotas.application import next_period_start
+
+        reset = next_period_start()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={
+                "Retry-After": "86400",
+                "X-Quota-Reset": reset,
+                "X-Quota-Dimension": exc.dimension,
+            },
+        ) from exc
     except QuotaExceeded as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

@@ -249,7 +249,7 @@ def _blocked_download_reason(ver: AgentVersion) -> str | None:
 
 async def download_archive(
     session: AsyncSession, namespace: str, name: str, version: str, user: User | None = None
-) -> tuple[bytes, int]:
+) -> tuple[bytes, int, int | None]:
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None or not await can_view(session, agent, user):
         raise AgentNotFound("agent not found")
@@ -262,12 +262,12 @@ async def download_archive(
     data = await ArchiveStore().get(namespace, name, ver.version)
     if data is None:
         raise ArchiveMissing("archive missing on server")
-    return data, ver.id
+    return data, ver.id, agent.organization_id
 
 
 async def download_archive_via_token(
     session: AsyncSession, namespace: str, name: str, version: str, token: str
-) -> tuple[bytes, int]:
+) -> tuple[bytes, int, int | None]:
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None:
         raise AgentNotFound("agent not found")
@@ -290,7 +290,7 @@ async def download_archive_via_token(
     data = await ArchiveStore().get(namespace, name, ver.version)
     if data is None:
         raise ArchiveMissing("archive missing on server")
-    return data, ver.id
+    return data, ver.id, agent.organization_id
 
 
 class DownloadUrlError(ValueError):
@@ -465,12 +465,27 @@ async def publish_version(
     if await version_repo.by_agent_and_version(agent, version) is not None:
         raise VersionConflict(f"version {version} already published (re-publish with a new version)")
 
+    if agent.organization_id is not None:
+        from app.quotas.application import QuotaExceeded as OrgQuotaBlocked
+        from app.quotas import application as quota_app
+
+        try:
+            await quota_app.enforce_publish_quota(
+                session, agent.organization_id, new_versions=1, new_bytes=len(archive_data)
+            )
+        except OrgQuotaBlocked as exc:
+            raise OrgQuotaBlocked(
+                exc.dimension, exc.used, exc.limit,
+                message=f"{exc}; release capacity or raise the organization quota",
+            ) from exc
+
     ver = await version_repo.create(
         agent_id=agent.id,
         version=version,
         manifest=manifest,
         sha256=sha256_hex(archive_data),
         archive_name=f"{namespace}_{name}-{version}.ahb",
+        archive_bytes=len(archive_data),
         signature=sig.model_dump(),
         published_by_id=user.id,
         security_status="pending",
@@ -718,9 +733,18 @@ async def set_package_visibility(
     else:
         organization_id = None
 
+    previous_org = agent.organization_id
     changed = agent_repo.set_visibility(agent, visibility)
     agent_repo.bind_organization(agent, organization_id)
     if changed:
+        if organization_id is not None and organization_id != previous_org:
+            from app.quotas.application import QuotaExceeded as QuotaBlocked
+            from app.quotas import application as quota_app
+
+            try:
+                await quota_app.enforce_publish_quota(session, organization_id, new_versions=0)
+            except QuotaBlocked as exc:
+                raise RegistryError(str(exc)) from exc
         await AuditRepository(session).record(
             actor_id=user.id,
             action="package.visibility_changed",

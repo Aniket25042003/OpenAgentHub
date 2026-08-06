@@ -96,6 +96,7 @@ class AgentVersion(Base):
     manifest: Mapped[dict] = mapped_column(JSONType)
     sha256: Mapped[str] = mapped_column(String(64))
     archive_name: Mapped[str] = mapped_column(String(255))
+    archive_bytes: Mapped[int] = mapped_column(default=0)
     signature: Mapped[dict] = mapped_column(JSONType)
     published_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     published_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
