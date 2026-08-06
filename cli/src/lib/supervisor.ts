@@ -375,7 +375,7 @@ async function settleRun(
   fallback: RunRecord,
   isDead: () => boolean,
 ): Promise<{ stopped: boolean; record: RunRecord }> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + (fallback.sandbox === "container" ? STOP_ESCALATION_MS + 5_000 : 5_000);
   while (Date.now() < deadline) {
     const record = readRun(runId);
     if (record && record.state !== "stopping") return { stopped: true, record };

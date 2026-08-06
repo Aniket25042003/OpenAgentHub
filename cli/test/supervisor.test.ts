@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExitReason, RunProbe, RunRecord, RunState } from "../src/lib/supervisor.ts";
+import type { RunProbe, RunRecord, RunState } from "../src/lib/supervisor.ts";
 
 const home = mkdtempSync(join(tmpdir(), "oah-sup-"));
 process.env.AGENT_HOME = home;
@@ -234,5 +234,3 @@ describe("startManagedRun", () => {
     m.removeRun(rec.runId);
   });
 });
-
-void (null as unknown as ExitReason | undefined);
