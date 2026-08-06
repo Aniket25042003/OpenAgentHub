@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     billing_past_due_days: int = 14
     billing_cancel_retention_days: int = 30
     billing_webhook_secret: str = ""
+    billing_webhook_per_ip_per_hour: int = 60
     billing_launchable_plans: str = "free"
 
     @property

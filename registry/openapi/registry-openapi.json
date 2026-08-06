@@ -5300,7 +5300,7 @@
         "summary": "List Billing Webhooks"
       },
       "post": {
-        "description": "Idempotent payment-provider webhook ingress.\n\nNo card data is accepted or stored; payloads are event metadata used to\nmove the subscription lifecycle. The route is signature-verified when\n``REGISTRY_BILLING_WEBHOOK_SECRET`` is set and idempotent per\n(provider, event_id).",
+        "description": "Idempotent payment-provider webhook ingress.\n\nNo card data is accepted or stored; payloads are event metadata used to\nmove the subscription lifecycle. The route is anonymous by design but\nfail-closed: it requires ``REGISTRY_BILLING_WEBHOOK_SECRET`` to be set\n(HMAC-SHA256 over the raw body) and is rate-limited per IP, never keyed\non attacker-controlled event data.",
         "operationId": "ingest_webhook_api_v1_orgs__slug__billing_webhooks_post",
         "parameters": [
           {
