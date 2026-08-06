@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { packAgent, generateKeyPair, RegistryClient, publicKeyFingerprint } from "@openagenthub/sdk";
 import { loadConfig, KEYS_DIR, REGISTRY_DEFAULT } from "@openagenthub/runtime";
+import { resolveRegistryUrl, resolveToken } from "../lib/credentials.js";
 
 export default class Publish extends Command {
   static description = "Package, sign and publish an agent to the registry";
@@ -23,7 +24,7 @@ export default class Publish extends Command {
       this.error((err as Error).message, { exit: 1 });
       return;
     }
-    const registryUrl = flags.registry ?? config.registryUrl ?? REGISTRY_DEFAULT;
+    const registryUrl = resolveRegistryUrl(flags.registry);
 
     const projectDir = resolve(args.path ?? ".");
     const { privateKey, publicKey } = this.signingKey();
@@ -36,10 +37,11 @@ export default class Publish extends Command {
 
     if (flags["public-only"]) return;
 
-    if (!config.token) {
-      this.error("not authenticated. Run: openagenthub login --token <GITHUB_TOKEN>", { exit: 1 });
+    const token = resolveToken(registryUrl);
+    if (!token) {
+      this.error("not authenticated. Run: openagenthub login", { exit: 1 });
     }
-    const client = new RegistryClient(registryUrl, config.token);
+    const client = new RegistryClient(registryUrl, token);
 
     try {
       const me = await client.me();

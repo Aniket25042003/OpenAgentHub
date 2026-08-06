@@ -78,6 +78,57 @@ step "init + validate"
 OUT="$("$CLI" validate "$PROJ")"
 assert_match "$OUT" "manifest valid: demo/hello"
 
+# --- device login + CLI auth commands ------------------------------------------
+step "device login flow + auth commands"
+"$CLI" login --registry "$REGISTRY" --no-browser >"$WORK/device-login.out" 2>&1 &
+LOGIN_PID=$!
+for _ in $(seq 1 40); do
+  if grep -q "user code" "$WORK/device-login.out" 2>/dev/null; then break; fi
+  sleep 0.25
+done
+DEVICE_OUT="$(cat "$WORK/device-login.out")"
+USER_CODE="$(printf '%s' "$DEVICE_OUT" | grep -oE 'user code:[[:space:]]*[A-Z0-9]{6}' | awk '{print $3}')"
+[[ -n "$USER_CODE" ]] || fail "device login did not print a user code (got: $DEVICE_OUT)"
+
+# approve the transaction from a cookie-authenticated web session
+WEB_SESSION="$(cd "$REG" && uv run python - <<PY
+import asyncio
+from sqlalchemy import select
+from app.db import get_session_factory
+from app.identity.models import User
+from app.identity.sessions import create_session, approve_device_login
+async def main():
+    async with get_session_factory()() as s:
+        user = (await s.execute(select(User).where(User.username == "e2e-user"))).scalar_one()
+        tok, _ = await create_session(s, user, audience="web")
+        await approve_device_login(s, user, "$USER_CODE")
+        await s.commit()
+        print(tok)
+asyncio.run(main())
+PY
+)"
+[[ -n "$WEB_SESSION" ]] || fail "could not create web session for approval"
+
+# wait for the CLI's background device-login poll to complete
+for _ in $(seq 1 40); do
+  if grep -q "authenticated as" "$WORK/device-login.out" 2>/dev/null; then break; fi
+  sleep 0.5
+done
+grep -q "authenticated as" "$WORK/device-login.out" || fail "device login never completed"
+kill "$LOGIN_PID" 2>/dev/null || true
+
+OUT="$("$CLI" whoami --registry "$REGISTRY")"
+assert_contains "$OUT" "e2e-user"
+OUT="$("$CLI" auth status --registry "$REGISTRY")"
+assert_contains "$OUT" "e2e-user"
+OUT="$("$CLI" auth sessions --registry "$REGISTRY")"
+assert_contains "$OUT" "cli"
+OUT="$("$CLI" logout --registry "$REGISTRY")"
+assert_contains "$OUT" "signed out"
+OUT="$("$CLI" whoami --registry "$REGISTRY")"
+assert_contains "$OUT" "not signed in"
+kill "$LOGIN_PID" 2>/dev/null || true
+
 # --- publish -------------------------------------------------------------------
 step "publish to registry"
 OUT="$("$CLI" login --token "$TOKEN" --registry "$REGISTRY")"

@@ -2,6 +2,7 @@ import { Command, Flags, Args } from "@oclif/core";
 import { RegistryClient } from "@openagenthub/sdk";
 import { loadConfig, REGISTRY_DEFAULT } from "@openagenthub/runtime";
 import { printTable } from "../lib/print.js";
+import { resolveRegistryUrl, resolveToken } from "../lib/credentials.js";
 
 export default class Search extends Command {
   static description = "Search the agent registry";
@@ -19,15 +20,14 @@ export default class Search extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Search);
-    let config;
     try {
-      config = loadConfig();
+      loadConfig();
     } catch (err) {
       this.error((err as Error).message, { exit: 1 });
       return;
     }
-    const registryUrl = flags.registry ?? config.registryUrl ?? REGISTRY_DEFAULT;
-    const client = new RegistryClient(registryUrl, config.token);
+    const registryUrl = resolveRegistryUrl(flags.registry);
+    const client = new RegistryClient(registryUrl, resolveToken(registryUrl));
 
     try {
       const items = await client.search({

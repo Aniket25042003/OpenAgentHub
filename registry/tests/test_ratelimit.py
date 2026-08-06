@@ -111,6 +111,28 @@ async def test_downloads_limited_per_ip(client, monkeypatch):
     assert res.status_code == 429
 
 
+async def test_downloads_own_bucket_unaffected_by_anonymous_reads(client, monkeypatch):
+    """Downloads must not share the anonymous-read limiter bucket.
+
+    A client doing many reads should not burn the download budget (and vice
+    versa); the fix separates them via the ``bucket`` key namespace.
+    """
+    from app.config import get_settings
+
+    token, _ = await create_user()
+    archive, sig, _, _ = signed_package("acme", "hot", "1.0.0")
+    await publish(client, token, "acme", "hot", "1.0.0", archive, sig)
+
+    monkeypatch.setattr(get_settings(), "downloads_per_minute_by_ip", 1)
+    monkeypatch.setattr(get_settings(), "anonymous_reads_per_minute", 300)
+
+    for _ in range(20):
+        res = await client.get("/api/v1/agents/acme/hot")
+        assert res.status_code == 200
+    res = await client.get("/api/v1/agents/acme/hot/versions/1.0.0/archive")
+    assert res.status_code == 200
+
+
 async def test_publish_invalidation_reaches_catalog(client):
     token, _ = await create_user()
     archive, sig, _, _ = signed_package("acme", "v1", "1.0.0")

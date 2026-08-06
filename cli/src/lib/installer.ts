@@ -26,6 +26,7 @@ import {
   type GrantedPermissions,
 } from "@openagenthub/runtime";
 import { confirmAll } from "./prompt.js";
+import { resolveToken } from "./credentials.js";
 
 export interface InstallOptions {
   forceYes: boolean;
@@ -114,7 +115,7 @@ export async function installAgent(
 
   let resolved: ResolvedPackage;
   if (source.kind === "registry") {
-    resolved = await resolveFromRegistry(spec, registryUrl, config.token);
+    resolved = await resolveFromRegistry(spec, registryUrl, resolveToken(registryUrl));
   } else if (source.kind === "file") {
     resolved = await resolveFromFile(source.path!);
   } else {

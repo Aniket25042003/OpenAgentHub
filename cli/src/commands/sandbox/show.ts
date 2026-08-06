@@ -12,6 +12,7 @@ import {
 import { checkRevocationBeforeRun, installedIsFresh } from "../../lib/revocation.js";
 import { parseSpec } from "../../lib/installer.js";
 import { resolveInstalledOrThrow } from "../../lib/resolve.js";
+import { resolveRegistryUrl, resolveToken } from "../../lib/credentials.js";
 
 export default class SandboxShow extends Command {
   static description = "Show the effective sandbox decision for an installed agent";
@@ -44,11 +45,12 @@ export default class SandboxShow extends Command {
     }
     const { manifest } = loadManifestFromDir(dir);
 
+    const registryUrl = resolveRegistryUrl(config.registryUrl);
     const revCheck = await checkRevocationBeforeRun(
       agentKey,
       installed,
-      config.registryUrl ?? "https://registry.openagenthub.dev",
-      config.token,
+      registryUrl,
+      resolveToken(registryUrl),
     );
     const statusFresh = revCheck.statusFresh && installedIsFresh(installed);
     if (revCheck.staleWarning) this.warn(revCheck.staleWarning);

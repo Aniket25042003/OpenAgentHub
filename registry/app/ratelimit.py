@@ -36,6 +36,7 @@ def enforce(
     ip_rule: RateLimitRule | None = None,
     account_rule: RateLimitRule | None = None,
     account_key: str | None = None,
+    bucket: str = "ip",
 ) -> bool:
     """Enforce zero or more limits and return whether at least one was applied."""
     from app.config import get_settings
@@ -46,7 +47,7 @@ def enforce(
     if ip_rule is not None:
         settings = get_settings()
         ip = trusted_client_ip(request, settings.trusted_proxy_set)
-        retry = limiter.check(f"ip:{ip}", ip_rule.limit, ip_rule.window_seconds)
+        retry = limiter.check(f"{bucket}:{ip}", ip_rule.limit, ip_rule.window_seconds)
         applied = True
         if retry is not None:
             raise RateLimitExceeded(limit=ip_rule.limit, window_seconds=ip_rule.window_seconds, retry_after=retry)

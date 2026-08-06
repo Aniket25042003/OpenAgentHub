@@ -16,6 +16,21 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     github_token_url: str = "https://github.com/login/oauth/access_token"
     github_user_url: str = "https://api.github.com/user"
+    github_authorize_url: str = "https://github.com/login/oauth/authorize"
+    github_state_ttl_seconds: int = 600
+    github_code_ttl_seconds: int = 120
+    web_redirect_uris: str = "http://localhost:3100/auth/callback"
+    session_cookie_name: str = "oah_session"
+    session_absolute_ttl_seconds: int = 7 * 24 * 3600
+    session_idle_ttl_seconds: int = 14 * 24 * 3600
+    session_rotate_after_seconds: int = 3600
+    session_cookie_domain: str = ""
+    session_cookie_secure: bool | None = None
+    device_login_ttl_seconds: int = 900
+    device_approve_per_ip_per_hour: int = 60
+    current_tos_version: int = 1
+    current_privacy_version: int = 1
+    current_publisher_agreement_version: int = 1
 
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = "*"

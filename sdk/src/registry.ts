@@ -306,4 +306,100 @@ export class RegistryClient {
     });
     return (await res.json()) as { token: string };
   }
+
+  async startDeviceLogin(clientName = "cli"): Promise<DeviceLoginStart> {
+    const res = await this.request("/api/v1/auth/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientName }),
+    });
+    return (await res.json()) as DeviceLoginStart;
+  }
+
+  async pollDeviceToken(deviceCode: string): Promise<DeviceTokenResult> {
+    let res: Response;
+    try {
+      res = await this.request("/api/v1/auth/devices/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceCode }),
+      });
+    } catch (err) {
+      if (err instanceof RegistryError && err.status === 400) {
+        const detail = err.message.split(": ").pop() ?? "authorization_pending";
+        throw new DeviceAuthPendingError(detail);
+      }
+      throw err;
+    }
+    return (await res.json()) as DeviceTokenResult;
+  }
+
+  async mySessions(): Promise<SessionInfo[]> {
+    const res = await this.request("/api/v1/sessions");
+    const data = (await res.json()) as { sessions: SessionInfo[] };
+    return data.sessions;
+  }
+
+  async revokeSession(sessionId: number): Promise<void> {
+    await this.request(`/api/v1/sessions/${sessionId}`, { method: "DELETE" });
+  }
+
+  async logoutMe(): Promise<void> {
+    await this.request("/api/v1/sessions/me", { method: "DELETE" });
+  }
+
+  async myAgreements(): Promise<AgreementsInfo> {
+    const res = await this.request("/api/v1/me/agreements");
+    return (await res.json()) as AgreementsInfo;
+  }
+
+  async acceptAgreements(tos: boolean, privacy: boolean, publisher: boolean): Promise<AgreementsInfo> {
+    const res = await this.request("/api/v1/me/agreements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tos, privacy, publisher }),
+    });
+    return (await res.json()) as AgreementsInfo;
+  }
+
+  async logout(): Promise<void> {
+    await this.request("/api/v1/logout", { method: "POST" });
+  }
+}
+
+export interface DeviceLoginStart {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+export interface DeviceTokenResult {
+  accessToken: string;
+  username: string;
+  tokenType: string;
+}
+
+export interface SessionInfo {
+  id: number;
+  audience: string;
+  deviceLabel?: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  revoked: boolean;
+}
+
+export interface AgreementsInfo {
+  tos: string;
+  privacy: string;
+  publisher: string;
+}
+
+export class DeviceAuthPendingError extends RegistryError {
+  constructor(message: string) {
+    super(message, 400);
+    this.name = "DeviceAuthPendingError";
+  }
 }

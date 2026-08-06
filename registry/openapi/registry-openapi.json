@@ -197,6 +197,27 @@
         "title": "AgentVersionDetail",
         "type": "object"
       },
+      "AgreementsRequest": {
+        "properties": {
+          "privacy": {
+            "default": false,
+            "title": "Privacy",
+            "type": "boolean"
+          },
+          "publisher": {
+            "default": false,
+            "title": "Publisher",
+            "type": "boolean"
+          },
+          "tos": {
+            "default": false,
+            "title": "Tos",
+            "type": "boolean"
+          }
+        },
+        "title": "AgreementsRequest",
+        "type": "object"
+      },
       "Body_publish_version_api_v1_agents__namespace___name__versions__version__put": {
         "properties": {
           "archive": {
@@ -409,6 +430,107 @@
           "watermark"
         ],
         "title": "CatalogResponse",
+        "type": "object"
+      },
+      "DeviceLoginRequest": {
+        "properties": {
+          "clientName": {
+            "default": "cli",
+            "title": "Clientname",
+            "type": "string"
+          },
+          "mode": {
+            "default": "poll",
+            "title": "Mode",
+            "type": "string"
+          },
+          "registryOrigin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registryorigin"
+          },
+          "requestedScopes": {
+            "default": "cli",
+            "title": "Requestedscopes",
+            "type": "string"
+          }
+        },
+        "title": "DeviceLoginRequest",
+        "type": "object"
+      },
+      "DeviceLoginResponse": {
+        "properties": {
+          "deviceCode": {
+            "title": "Devicecode",
+            "type": "string"
+          },
+          "expiresIn": {
+            "title": "Expiresin",
+            "type": "integer"
+          },
+          "interval": {
+            "title": "Interval",
+            "type": "integer"
+          },
+          "userCode": {
+            "title": "Usercode",
+            "type": "string"
+          },
+          "verificationUri": {
+            "title": "Verificationuri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceCode",
+          "userCode",
+          "verificationUri",
+          "expiresIn",
+          "interval"
+        ],
+        "title": "DeviceLoginResponse",
+        "type": "object"
+      },
+      "DevicePollRequest": {
+        "properties": {
+          "deviceCode": {
+            "title": "Devicecode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceCode"
+        ],
+        "title": "DevicePollRequest",
+        "type": "object"
+      },
+      "DevicePollResponse": {
+        "properties": {
+          "accessToken": {
+            "title": "Accesstoken",
+            "type": "string"
+          },
+          "tokenType": {
+            "default": "bearer",
+            "title": "Tokentype",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken",
+          "username"
+        ],
+        "title": "DevicePollResponse",
         "type": "object"
       },
       "GithubExchangeRequest": {
@@ -657,6 +779,71 @@
           "findings"
         ],
         "title": "SecurityReport",
+        "type": "object"
+      },
+      "SessionInfo": {
+        "properties": {
+          "audience": {
+            "title": "Audience",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "deviceLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Devicelabel"
+          },
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "lastUsedAt": {
+            "title": "Lastusedat",
+            "type": "string"
+          },
+          "revoked": {
+            "default": false,
+            "title": "Revoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "audience",
+          "createdAt",
+          "lastUsedAt",
+          "expiresAt"
+        ],
+        "title": "SessionInfo",
+        "type": "object"
+      },
+      "SessionsResponse": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionInfo"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "SessionsResponse",
         "type": "object"
       },
       "SignatureFile": {
@@ -1531,6 +1718,119 @@
         "summary": "Trigger Scan"
       }
     },
+    "/api/v1/auth/approve": {
+      "post": {
+        "operationId": "approve_device_api_v1_auth_approve_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_code",
+            "required": true,
+            "schema": {
+              "title": "User Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Device"
+      }
+    },
+    "/api/v1/auth/devices": {
+      "post": {
+        "operationId": "create_device_api_v1_auth_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceLoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Device"
+      }
+    },
+    "/api/v1/auth/devices/token": {
+      "post": {
+        "operationId": "poll_device_api_v1_auth_devices_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicePollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll Device"
+      }
+    },
     "/api/v1/auth/github": {
       "post": {
         "operationId": "github_login_api_v1_auth_github_post",
@@ -1852,6 +2152,22 @@
         "summary": "Revoke Key"
       }
     },
+    "/api/v1/logout": {
+      "post": {
+        "operationId": "logout_api_v1_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout"
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "me_api_v1_me_get",
@@ -1873,6 +2189,56 @@
           }
         ],
         "summary": "Me"
+      }
+    },
+    "/api/v1/me/agreements": {
+      "get": {
+        "operationId": "my_agreements_api_v1_me_agreements_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "My Agreements"
+      },
+      "post": {
+        "operationId": "update_agreements_api_v1_me_agreements_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgreementsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agreements"
       }
     },
     "/api/v1/namespaces": {
@@ -1984,6 +2350,160 @@
           }
         },
         "summary": "Revocation Feed"
+      }
+    },
+    "/api/v1/sessions": {
+      "get": {
+        "operationId": "my_sessions_api_v1_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "My Sessions"
+      }
+    },
+    "/api/v1/sessions/me": {
+      "delete": {
+        "operationId": "revoke_current_session_api_v1_sessions_me_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Revoke Current Session"
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "delete": {
+        "operationId": "revoke_my_session_api_v1_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke My Session"
+      }
+    },
+    "/auth/github/callback": {
+      "get": {
+        "operationId": "github_callback_auth_github_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "title": "State",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Callback"
+      }
+    },
+    "/auth/github/start": {
+      "get": {
+        "operationId": "github_start_auth_github_start_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "required": true,
+            "schema": {
+              "title": "Redirect Uri",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Start"
       }
     },
     "/health": {

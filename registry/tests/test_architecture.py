@@ -131,6 +131,7 @@ ALLOWED_CROSS_MODULE = {
     "registry/catalog.py": {"registry", "identity"},
     "entitlements/application.py": {"audit", "identity"},
     "identity/application.py": {"audit"},
+    "identity/sessions.py": {"audit"},
     "db.py": {"registry"},
     "workers/scan.py": {"security_review", "outbox"},
     "workers/notifications.py": {"outbox"},

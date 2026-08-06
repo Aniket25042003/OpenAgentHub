@@ -11,7 +11,7 @@ from app.audit.repositories import AuditRepository
 from app.config import get_settings
 from app.db import get_session
 from app.identity.models import SigningKey, User
-from app.identity.repositories import SigningKeyRepository, UserRepository
+from app.identity.repositories import SessionRepository, SigningKeyRepository, UserRepository
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -62,12 +62,26 @@ async def get_current_user(
 ) -> User:
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
-    payload = decode_token(credentials.credentials)
-    user_id = payload.get("sub")
-    user = await UserRepository(session).by_id(int(user_id))
+    token = credentials.credentials
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        user = await UserRepository(session).by_id(int(user_id))
+    except HTTPException:
+        user = await _user_from_session(session, token)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user no longer exists")
     return user
+
+
+async def _user_from_session(session: AsyncSession, token: str) -> User | None:
+    from app.identity.sessions import session_user
+
+    try:
+        user, _ = await session_user(session, token, rotate=False)
+        return user
+    except HTTPException:
+        return None
 
 
 async def require_active_user(user: User = Depends(get_current_user)) -> User:
@@ -199,6 +213,7 @@ async def suspend_user(session: AsyncSession, actor: User, user_id: int, suspend
     new_status = "suspended" if suspended else "active"
     if user.status != new_status:
         UserRepository(session).update_status(user, new_status)
+        await SessionRepository(session).revoke_all_for_user(user.id)
         await AuditRepository(session).record(
             actor_id=actor.id,
             action="user.suspended" if suspended else "user.unsuspended",
@@ -207,3 +222,4 @@ async def suspend_user(session: AsyncSession, actor: User, user_id: int, suspend
             detail={"username": user.username},
         )
     return user
+
