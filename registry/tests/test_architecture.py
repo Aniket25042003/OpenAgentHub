@@ -151,7 +151,7 @@ ALLOWED_CROSS_MODULE = {
     "entitlements/application.py": {"audit", "identity"},
     "identity/application.py": {"audit", "organizations"},
     "identity/sessions.py": {"audit"},
-    "identity/api_tokens.py": {"audit"},
+"identity/api_tokens.py": {"audit", "organizations"},
     "organizations/application.py": {"audit", "identity", "billing", "quotas"},
     "organizations/routes.py": {"identity"},
     "quotas/models.py": {"db"},

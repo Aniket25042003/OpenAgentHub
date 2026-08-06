@@ -359,6 +359,31 @@ describe("opencode adapter", () => {
       locker.close();
     }
   });
+
+  it("reads usage when the time column is created_at instead of time", () => {
+    const dbPath2 = join(opencodeDir, "storage", "proj-d", "storage.sqlite");
+    mkdirSync(join(opencodeDir, "storage", "proj-d"), { recursive: true });
+    const db = new DatabaseSync(dbPath2);
+    db.exec(
+      "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, modelID TEXT, tokens TEXT, created_at INTEGER)",
+    );
+    db.prepare("INSERT INTO messages (session_id, modelID, tokens, created_at) VALUES (?, ?, ?, ?)").run(
+      "s1",
+      "gpt-4o",
+      JSON.stringify({ input: 9, output: 3 }),
+      1_752_500_000_000,
+    );
+    db.close();
+
+    const first = collectOpencode(store, 2000, settings);
+    assert.equal(first.result.status, "ok");
+    assert.equal(first.usage.length, 1);
+    assert.equal(first.usage[0].tokensIn, 9);
+    assert.equal(first.usage[0].tokensOut, 3);
+
+    const second = collectOpencode(store, 2000, settings);
+    assert.equal(second.usage.length, 0, "cursor on created_at must not re-read");
+  });
 });
 
 describe("collection orchestration", () => {

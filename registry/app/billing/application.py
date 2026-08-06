@@ -20,6 +20,7 @@ import io
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.repositories import AuditRepository
@@ -94,6 +95,15 @@ def _utc() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _naive(dt: datetime | None) -> datetime | None:
+    """Strip tzinfo to the naive UTC dialect used for storage/compare."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 def _iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
@@ -122,7 +132,7 @@ async def ensure_subscription(session: AsyncSession, organization_id: int) -> Or
     session.add(row)
     await session.flush()
     if row.status in _TIMED_STATUSES:
-        await _enqueue_reconcile(session, organization_id)
+        await _schedule_next_pending(session, row)
     return row
 
 
@@ -161,16 +171,45 @@ def effective_entitlements(sub: OrganizationSubscription) -> dict:
     return entitlements(sub.plan)
 
 
-async def _enqueue_reconcile(session: AsyncSession, organization_id: int) -> None:
-    """Produce a billing.reconcile job when a timed status needs advancing."""
+async def _enqueue_reconcile(
+    session: AsyncSession, organization_id: int, *, at: datetime
+) -> None:
+    """Produce a billing.reconcile job, deferred to ``at`` (the deadline).
+
+    The dedupe key encodes the deadline so a fresh schedule never collides
+    with a previously completed run; jobs are durable and survive restarts.
+    """
     from app.outbox.queue import DurableQueue
 
     await DurableQueue().enqueue(
         session,
         "billing.reconcile",
         {"organizationId": organization_id},
-        dedupe_key=f"billing:{organization_id}",
+        dedupe_key=f"billing:{organization_id}:{at.isoformat()}",
+        run_at=at,
     )
+
+
+async def _schedule_next_pending(session: AsyncSession, sub: OrganizationSubscription) -> None:
+    """Enqueue the next reconcile deadline, if the subscription is in a timed status."""
+    now = _utc()
+    trial_deadline = _naive(sub.trial_ends_at)
+    grace_deadline = _naive(sub.grace_ends_at)
+    if sub.status == "trial" and trial_deadline is not None and trial_deadline > now:
+        await _enqueue_reconcile(session, sub.organization_id, at=trial_deadline)
+        return
+    if (
+        sub.status == "grace_period"
+        and grace_deadline is not None
+        and grace_deadline > now
+    ):
+        await _enqueue_reconcile(session, sub.organization_id, at=grace_deadline)
+        return
+    if sub.status == "past_due":
+        s = get_settings()
+        ref = _naive(sub.updated_at) or now
+        at = ref + timedelta(days=s.billing_past_due_days)
+        await _enqueue_reconcile(session, sub.organization_id, at=max(at, now))
 
 
 async def transition_status(
@@ -207,7 +246,7 @@ async def transition_status(
         sub.canceled_at = None
     sub.entitlement_snapshot = snapshot_for(sub.plan, sub.status)
     if new_status in _TIMED_STATUSES:
-        await _enqueue_reconcile(session, sub.organization_id)
+        await _schedule_next_pending(session, sub)
     await AuditRepository(session).record(
         actor_id=actor_id,
         action="organization.billing.status_changed",
@@ -238,7 +277,9 @@ async def enforce_write_allowed(session: AsyncSession, organization_id: int) -> 
 async def verify_webhook_signature(raw_body: bytes, signature: str | None) -> None:
     s = get_settings()
     if not s.billing_webhook_secret:
-        return
+        raise WebhookSignatureError(
+            "billing webhooks are disabled: REGISTRY_BILLING_WEBHOOK_SECRET is not set"
+        )
     if not signature:
         raise WebhookSignatureError("missing X-OpenAgentHub-Signature header")
     expected = hmac.new(
@@ -287,9 +328,13 @@ async def process_webhook(
     new_status = WEBHOOK_EVENT_TO_STATUS.get(event_type)
     if new_status is None:
         raise BillingError(f"unhandled webhook event type '{event_type}'")
-    await transition_status(
-        session, sub, new_status, actor_id=None, reason=event_type, via="webhook"
-    )
+    try:
+        await transition_status(
+            session, sub, new_status, actor_id=None, reason=event_type, via="webhook"
+        )
+    except IntegrityError:
+        await session.rollback()
+        return {"duplicate": True, "eventId": event_id}
     event.status = "processed"
     event.processed_at = utcnow()
     await AuditRepository(session).record(
@@ -341,22 +386,27 @@ async def reconcile_subscription(session: AsyncSession, organization_id: int) ->
     sub = await subscription_for(session, organization_id)
     now = _utc()
     changes = []
-    if sub.status == "trial" and sub.trial_ends_at is not None and sub.trial_ends_at <= now:
+    trial_deadline = _naive(sub.trial_ends_at)
+    grace_deadline = _naive(sub.grace_ends_at)
+    update_ts = _naive(sub.updated_at)
+    if sub.status == "trial" and trial_deadline is not None and trial_deadline <= now:
         await transition_status(session, sub, "past_due", reason="trial expired", via="reconcile")
         changes.append("trial->past_due")
     elif (
         sub.status == "grace_period"
-        and sub.grace_ends_at is not None
-        and sub.grace_ends_at <= now
+        and grace_deadline is not None
+        and grace_deadline <= now
     ):
         await transition_status(session, sub, "past_due", reason="grace expired", via="reconcile")
         changes.append("grace_period->past_due")
     elif sub.status == "past_due":
         s = get_settings()
         threshold = now - timedelta(days=s.billing_past_due_days)
-        if sub.updated_at is not None and sub.updated_at <= threshold:
+        if update_ts is not None and update_ts <= threshold:
             await transition_status(session, sub, "suspended", reason="past due", via="reconcile")
             changes.append("past_due->suspended")
+    if sub.status in _TIMED_STATUSES:
+        await _schedule_next_pending(session, sub)
     await session.flush()
     return {"organizationId": organization_id, "changes": changes}
 

@@ -126,7 +126,23 @@ async def test_billing_manager_role_can_transition(client):
     assert res.json()["status"] == "canceled"
 
 
-async def test_webhook_idempotency(client):
+async def _signed(secret: str, payload: dict, headers: dict | None = None):
+    """Post a webhook payload with an HMAC-SHA256 signature over the raw body."""
+    import hashlib
+    import hmac
+    import json
+
+    body = json.dumps(payload).encode()
+    sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    hdrs = {"X-OpenAgentHub-Signature": sig, "Content-Type": "application/json"}
+    hdrs.update(headers or {})
+    return body, hdrs
+
+
+async def test_webhook_idempotency(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "billing_webhook_secret", "super-secret")
     owner_token, _ = await create_user(f"bill-owner-{uuid.uuid4().hex[:6]}")
     org = await _make_org(client, owner_token)
     payload = {
@@ -135,18 +151,34 @@ async def test_webhook_idempotency(client):
         "eventType": "invoice.payment_failed",
         "payload": {"attempt": 1},
     }
-    res = await client.post(f"/api/v1/orgs/{org}/billing/webhooks", json=payload)
+    body, hdrs = await _signed("super-secret", payload)
+    res = await client.post(f"/api/v1/orgs/{org}/billing/webhooks", content=body, headers=hdrs)
     assert res.status_code == 200, res.text
     assert res.json()["duplicate"] is False
     assert res.json()["status"] == "grace_period"
 
-    res = await client.post(f"/api/v1/orgs/{org}/billing/webhooks", json=payload)
+    res = await client.post(f"/api/v1/orgs/{org}/billing/webhooks", content=body, headers=hdrs)
     assert res.status_code == 200, res.text
     assert res.json()["duplicate"] is True
 
     # state did not move further on replay
     res = await client.get(f"/api/v1/orgs/{org}/billing", headers=auth_header(owner_token))
     assert res.json()["status"] == "grace_period"
+
+
+async def test_webhook_fail_closed_without_secret(client):
+    """Webhook ingress is disabled unless REGISTRY_BILLING_WEBHOOK_SECRET is set."""
+    owner_token, _ = await create_user(f"bill-owner-{uuid.uuid4().hex[:6]}")
+    org = await _make_org(client, owner_token)
+    payload = {
+        "provider": "stripe-test",
+        "eventId": "evt_nosecret",
+        "eventType": "subscription.suspended",
+        "payload": {},
+    }
+    res = await client.post(f"/api/v1/orgs/{org}/billing/webhooks", json=payload)
+    assert res.status_code == 400
+    assert "REGISTRY_BILLING_WEBHOOK_SECRET" in res.text
 
 
 async def test_webhook_signature_required_when_secret_set(client, monkeypatch):
@@ -166,13 +198,32 @@ async def test_webhook_signature_required_when_secret_set(client, monkeypatch):
     assert "X-OpenAgentHub-Signature" in res.text
 
 
-async def test_webhook_unknown_event_type(client):
+async def test_webhook_rejects_bad_signature(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "billing_webhook_secret", "super-secret")
     owner_token, _ = await create_user(f"bill-owner-{uuid.uuid4().hex[:6]}")
     org = await _make_org(client, owner_token)
-    res = await client.post(
-        f"/api/v1/orgs/{org}/billing/webhooks",
-        json={"provider": "stripe-test", "eventId": "evt_3", "eventType": "invoice.refunded", "payload": {}},
-    )
+    payload = {
+        "provider": "stripe-test",
+        "eventId": "evt_2b",
+        "eventType": "subscription.canceled",
+        "payload": {},
+    }
+    body, hdrs = await _signed("not-the-secret", payload)
+    res = await client.post(f"/api/v1/orgs/{org}/billing/webhooks", content=body, headers=hdrs)
+    assert res.status_code == 400
+
+
+async def test_webhook_unknown_event_type(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "billing_webhook_secret", "super-secret")
+    owner_token, _ = await create_user(f"bill-owner-{uuid.uuid4().hex[:6]}")
+    org = await _make_org(client, owner_token)
+    payload = {"provider": "stripe-test", "eventId": "evt_3", "eventType": "invoice.refunded", "payload": {}}
+    body, hdrs = await _signed("super-secret", payload)
+    res = await client.post(f"/api/v1/orgs/{org}/billing/webhooks", content=body, headers=hdrs)
     assert res.status_code == 400
 
 
@@ -321,14 +372,67 @@ async def test_reconcile_advances_expired_trial(client):
         sub.trial_ends_at = utcnow() - timedelta(days=1)
         await session.commit()
 
+    # expired trial must move to past_due via the on-demand read path
+    res = await client.get(f"/api/v1/orgs/{org}/billing", headers=auth_header(owner_token))
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "past_due"
+
+    # the transition must be durable (persisted, not rolled back at request end)
+    async with get_session_factory()() as session:
+        sub = (
+            await session.execute(
+                select(OrganizationSubscription).where(
+                    OrganizationSubscription.organization_id == org_row.id
+                )
+            )
+        ).scalar_one()
+        assert sub.status == "past_due"
+
+
+async def test_grace_expiry_moves_to_past_due_via_scheduled_job(client):
+    """A trial's scheduled reconcile fires at expiry and re-schedules the next deadline."""
+    owner_token, _ = await create_user(f"bill-owner-{uuid.uuid4().hex[:6]}")
+    org = await _make_org(client, owner_token)
+
+    from sqlalchemy import select
+
     from app.billing.application import reconcile_subscription
+    from app.outbox.models import QueueJob
+    from app.organizations.models import Organization
 
     async with get_session_factory()() as session:
-        result = await reconcile_subscription(session, org_row.id)
-        assert result["changes"] == ["trial->past_due"]
+        org_row = (
+            await session.execute(select(Organization).where(Organization.slug == org))
+        ).scalar_one()
+        sub = (
+            await session.execute(
+                select(OrganizationSubscription).where(
+                    OrganizationSubscription.organization_id == org_row.id
+                )
+            )
+        ).scalar_one()
+        # expire the trial now
+        sub.trial_ends_at = utcnow() - timedelta(days=1)
         await session.commit()
-    res = await client.get(f"/api/v1/orgs/{org}/billing", headers=auth_header(owner_token))
-    assert res.json()["status"] == "past_due"
+
+        # the reconcile job the subscription seeded earlier is deferred to the
+        # trial deadline; move trial->past_due and confirm a past_due job exists
+        before = (
+            await session.execute(select(QueueJob).where(QueueJob.job_type == "billing.reconcile"))
+        ).scalars().all()
+        await reconcile_subscription(session, org_row.id)
+        await session.commit()
+        after = (
+            await session.execute(select(QueueJob).where(QueueJob.job_type == "billing.reconcile"))
+        ).scalars().all()
+        assert sub.status == "past_due"
+        new_jobs = [
+            j
+            for j in after
+            if j.id not in {b.id for b in before}
+            and j.dedupe_key.startswith(f"billing:{org_row.id}:")
+        ]
+        assert new_jobs, "expected a deferred follow-up reconcile job after trial expiry"
 
 
 async def test_entitlements_flow_into_quota_limits(client, monkeypatch):

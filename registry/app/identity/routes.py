@@ -13,6 +13,7 @@ from app.identity.api_tokens import (
     revoke_api_token,
     rotate_api_token,
 )
+from app.ratelimit import RateLimitRule, enforce
 from app.identity.application import (
     IdentityError,
     KeyNotFound,
@@ -27,7 +28,7 @@ from app.identity.application import (
     register_signing_key,
     require_active_user,
     require_admin,
-    resolve_cookie_user,
+    require_scope,
     revoke_signing_key,
     suspend_user,
 )
@@ -116,7 +117,7 @@ async def github_login(req: GithubExchangeRequest, session: AsyncSession = Depen
 async def upload_key(
     req: UploadKeyRequest,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_active_user),
+    user: User = Depends(require_scope("keys:manage")),
 ):
     try:
         fingerprint, key_id = await register_signing_key(session, user, req.publicKey, label=req.label, expires_at=req.expiresAt)
@@ -130,7 +131,7 @@ async def upload_key(
 async def revoke_key(
     key_id: int,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_active_user),
+    user: User = Depends(require_scope("keys:manage")),
 ):
     try:
         key = await revoke_signing_key(session, user, key_id)
@@ -153,7 +154,7 @@ async def my_tokens(
 async def create_token(
     req: ApiTokenCreateRequest,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_active_user),
+    user: User = Depends(require_scope("keys:manage")),
 ):
     from app.config import get_settings
 
@@ -189,7 +190,7 @@ async def create_token(
 async def revoke_token(
     token_id: int,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_active_user),
+    user: User = Depends(require_scope("keys:manage")),
 ):
     try:
         row = await revoke_api_token(session, user, token_id)
@@ -204,7 +205,7 @@ async def rotate_token(
     token_id: int,
     req: ApiTokenRotateRequest,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_active_user),
+    user: User = Depends(require_scope("keys:manage")),
 ):
     try:
         raw, fresh = await rotate_api_token(
@@ -338,7 +339,6 @@ async def create_device(req: DeviceLoginRequest, session: AsyncSession = Depends
         session,
         client_name=req.clientName,
         requested_scopes=req.requestedScopes,
-        registry_origin=req.registryOrigin,
         mode=req.mode,
     )
     await session.commit()
@@ -359,8 +359,15 @@ async def poll_device(req: DevicePollRequest, session: AsyncSession = Depends(ge
 
 @router.post("/auth/approve")
 async def approve_device(user_code: str, request: Request, session: AsyncSession = Depends(get_session)):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.device_approve_per_ip_per_hour, 3600))
     user = await resolve_cookie_user(request, session)
-    await sess.approve_device_login(session, user, user_code)
+    approving_origin = request.headers.get("origin") or request.headers.get("referer")
+    if approving_origin:
+        from urllib.parse import urlparse
+
+        approving_origin = f"{urlparse(approving_origin).scheme}://{urlparse(approving_origin).netloc}"
+    await sess.approve_device_login(session, user, user_code, approving_origin=approving_origin)
     await session.commit()
     return {"ok": True}
 
@@ -411,11 +418,46 @@ async def revoke_current_session(request: Request, session: AsyncSession = Depen
 
 
 @router.post("/logout")
-async def logout(request: Request):
+async def logout(request: Request, session: AsyncSession = Depends(get_session)):
     settings = get_settings()
-    return Response(
-        status_code=200,
-        content='{"ok": true}',
-        media_type="application/json",
-        headers={"set-cookie": f"{settings.session_cookie_name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"},
-    )
+    token = request.cookies.get(settings.session_cookie_name)
+    if token:
+        try:
+            user, _ = await sess.session_user(session, token, rotate=False)
+            row = await SessionRepository(session).by_token_hash(sess.hash_token(token))
+            if row is not None:
+                await sess.revoke_by_id(session, row.id, user)
+                await session.commit()
+        except HTTPException:
+            pass
+    cookie = f"{settings.session_cookie_name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+    if settings.session_cookie_domain:
+        cookie += f"; Domain={settings.session_cookie_domain}"
+    return Response(status_code=200, content='{"ok": true}', media_type="application/json", headers={"set-cookie": cookie})
+
+
+async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
+    token = request.cookies.get(get_settings().session_cookie_name)
+    if not token:
+        bearer = request.headers.get("authorization", "")
+        if bearer.startswith("Bearer "):
+            user = await _user_from_bearer(bearer.removeprefix("Bearer ").strip(), session)
+            if user is not None:
+                return user
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not signed in")
+    user, _ = await sess.session_user(session, token, rotate=False)
+    return user
+
+
+async def _user_from_bearer(token: str, session: AsyncSession) -> User | None:
+    from app.identity.application import decode_token, _user_from_session
+
+    try:
+        payload = decode_token(token)
+        user_id = int(payload["sub"])
+        user = await session.get(User, user_id)
+        if user is not None:
+            return user
+    except (HTTPException, KeyError, ValueError):
+        pass
+    return await _user_from_session(session, token)

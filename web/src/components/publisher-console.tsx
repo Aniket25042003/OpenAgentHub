@@ -163,8 +163,8 @@ export function PublisherConsole() {
         </div>
         <p className="muted" style={{ marginTop: 12 }}>
           {overview.publishesUnlimited
-            ? "Unlimited publishes this month."
-            : `${overview.publishesUsed} of ${overview.publishesLimit} publishes used this month.`}
+            ? "Unlimited publishes in the last 24 hours."
+            : `${overview.publishesUsed} of ${overview.publishesLimit} publishes in the last 24 hours.`}
           {overview.flaggedVersions > 0 && ` ${overview.flaggedVersions} flagged version(s).`}
         </p>
       </div>
@@ -249,9 +249,7 @@ export function PublisherConsole() {
               {packages.map((p) => (
                 <tr key={`${p.namespace}/${p.name}@${p.version}`}>
                   <td>
-                    <a href={`/agents/${p.namespace}/${p.name}`}>
-                      <code className="inline">{p.namespace}/{p.name}</code>
-                    </a>
+                    <code className="inline">{p.namespace}/{p.name}</code>
                   </td>
                   <td>{p.version}</td>
                   <td>{p.downloads}</td>

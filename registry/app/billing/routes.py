@@ -80,6 +80,7 @@ async def get_org_billing(
     try:
         org = await _org_and_member(session, slug, user)
         await application.reconcile_subscription(session, org.id)
+        await session.commit()
         return await application.get_org_billing(session, org.id)
     except OrganizationError as exc:
         raise _map_errors(exc) from exc
@@ -147,16 +148,15 @@ async def ingest_webhook(
     """Idempotent payment-provider webhook ingress.
 
     No card data is accepted or stored; payloads are event metadata used to
-    move the subscription lifecycle. The route is signature-verified when
-    ``REGISTRY_BILLING_WEBHOOK_SECRET`` is set and idempotent per
-    (provider, event_id).
+    move the subscription lifecycle. The route is anonymous by design but
+    fail-closed: it requires ``REGISTRY_BILLING_WEBHOOK_SECRET`` to be set
+    (HMAC-SHA256 over the raw body) and is rate-limited per IP, never keyed
+    on attacker-controlled event data.
     """
     settings = get_settings()
     enforce(
         request,
-        ip_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
-        account_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
-        account_key=req.eventId[:64] if req.eventId else "webhook",
+        ip_rule=RateLimitRule(settings.billing_webhook_per_ip_per_hour, 3600),
     )
     raw_body = await request.body()
     try:

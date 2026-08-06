@@ -1045,17 +1045,6 @@
             "title": "Mode",
             "type": "string"
           },
-          "registryOrigin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Registryorigin"
-          },
           "requestedScopes": {
             "default": "cli",
             "title": "Requestedscopes",
@@ -2545,6 +2534,41 @@
         "title": "ServiceAccountItem",
         "type": "object"
       },
+      "ServiceAccountTokenRequest": {
+        "properties": {
+          "expiresInDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresindays"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "scopes": {
+            "default": [
+              "packages:read",
+              "packages:publish"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "ServiceAccountTokenRequest",
+        "type": "object"
+      },
       "ServiceAccountsResponse": {
         "properties": {
           "items": {
@@ -3902,6 +3926,22 @@
               "default": "public",
               "title": "Visibility",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "organizationSlug",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Organizationslug"
             }
           }
         ],
@@ -5518,7 +5558,7 @@
         "summary": "List Billing Webhooks"
       },
       "post": {
-        "description": "Idempotent payment-provider webhook ingress.\n\nNo card data is accepted or stored; payloads are event metadata used to\nmove the subscription lifecycle. The route is signature-verified when\n``REGISTRY_BILLING_WEBHOOK_SECRET`` is set and idempotent per\n(provider, event_id).",
+        "description": "Idempotent payment-provider webhook ingress.\n\nNo card data is accepted or stored; payloads are event metadata used to\nmove the subscription lifecycle. The route is anonymous by design but\nfail-closed: it requires ``REGISTRY_BILLING_WEBHOOK_SECRET`` to be set\n(HMAC-SHA256 over the raw body) and is rate-limited per IP, never keyed\non attacker-controlled event data.",
         "operationId": "ingest_webhook_api_v1_orgs__slug__billing_webhooks_post",
         "parameters": [
           {
@@ -6093,6 +6133,64 @@
           }
         },
         "summary": "Delete Service Account"
+      }
+    },
+    "/api/v1/orgs/{slug}/service-accounts/{sa_id}/tokens": {
+      "post": {
+        "operationId": "issue_service_account_token_api_v1_orgs__slug__service_accounts__sa_id__tokens_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sa_id",
+            "required": true,
+            "schema": {
+              "title": "Sa Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAccountTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue Service Account Token"
       }
     },
     "/api/v1/orgs/{slug}/teams": {

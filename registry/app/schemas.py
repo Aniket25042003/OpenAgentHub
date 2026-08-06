@@ -171,7 +171,6 @@ class GithubExchangeResponse(BaseModel):
 class DeviceLoginRequest(BaseModel):
     clientName: str = "cli"
     requestedScopes: str = "cli"
-    registryOrigin: str | None = None
     mode: str = "poll"
 
 
@@ -539,6 +538,12 @@ class ApiTokenRotateRequest(BaseModel):
 class ServiceAccountCreateRequest(BaseModel):
     name: str
     role: str = "maintainer"
+
+
+class ServiceAccountTokenRequest(BaseModel):
+    label: str
+    scopes: list[str] = ["packages:read", "packages:publish"]
+    expiresInDays: int | None = None
 
 
 class ServiceAccountItem(BaseModel):

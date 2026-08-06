@@ -36,14 +36,6 @@ class DownloadCountBuffer:
             entry[0] += bytes
             entry[1] += 1
 
-    def drain(self) -> tuple[dict[int, int], dict[tuple[int, str], list[int]]]:
-        counts = self._counts
-        usage = self._usage
-        self._counts = {}
-        self._usage = {}
-        self._drained_at = time.monotonic()
-        return counts, usage
-
     @property
     def pending(self) -> int:
         return len(self._counts)
@@ -52,7 +44,8 @@ class DownloadCountBuffer:
         return self._usage.get((organization_id, period), [0, 0])[0]
 
     async def flush(self, session_factory: async_sessionmaker[Any] | None = None) -> int:
-        counts, usage = self.drain()
+        counts = {vid: amt for vid, amt in self._counts.items()}
+        usage = {key: list(value) for key, value in self._usage.items()}
         total = 0
         if not counts and not usage:
             return 0
@@ -67,7 +60,20 @@ class DownloadCountBuffer:
             for (organization_id, period), (bytes_, count) in usage.items():
                 await _upsert_org_usage(session, organization_id, period, bytes_, count)
             await session.commit()
+        self._remove_after_success(counts)
+        for key in usage:
+            self._usage.pop(key, None)
         return total
+
+    def _remove_after_success(self, flushed: dict[int, int]) -> None:
+        """Drop flushed counts only after they are persisted; keep any concurrent records."""
+        for version_id, amount in flushed.items():
+            remaining = self._counts.get(version_id, 0) - amount
+            if remaining > 0:
+                self._counts[version_id] = remaining
+            else:
+                self._counts.pop(version_id, None)
+        self._drained_at = time.monotonic()
 
     async def _run(self) -> None:
         while True:

@@ -98,6 +98,14 @@ async def _user_from_api_token(session: AsyncSession, token: str) -> User | None
     user = await session.get(User, row.user_id)
     if user is None or user.status != "active":
         return None
+    if row.is_service_account:
+        from app.organizations.repositories import ServiceAccountRepository
+
+        sa = await ServiceAccountRepository(session).by_user_id(row.user_id)
+        if sa is None or sa.status != "active":
+            return None
+    user._api_token = row
+    user._api_token_org_id = row.organization_id
     ApiTokenRepository(session).touch(row, datetime.now(timezone.utc))
     return user
 
@@ -176,6 +184,29 @@ require_admin = require_roles("admin")
 require_reviewer_or_admin = require_roles("reviewer", "admin")
 
 
+def require_cookie_scope(*scopes: str):
+    """Dependency for cookie-first routes: deny API-token auth lacking a scope.
+
+    Session cookies remain full-access; bearer API tokens must carry one of
+    ``scopes`` (mirrors ``require_scope`` for ``resolve_cookie_active_user``).
+    """
+
+    async def _check(
+        request: Request,
+        session: AsyncSession = Depends(get_session),
+        user: User = Depends(resolve_cookie_active_user),
+    ) -> User:
+        granted = await api_token_scopes(request, session)
+        if granted is not None and not (set(scopes) & granted):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"token lacks required scope (need one of: {', '.join(scopes)})",
+            )
+        return user
+
+    return _check
+
+
 async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
     from app.identity.sessions import session_user
 
@@ -187,7 +218,7 @@ async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
             if user is not None:
                 return user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not signed in")
-    user, _ = await session_user(session, token)
+    user, _ = await session_user(session, token, rotate=False)
     return user
 
 
