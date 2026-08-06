@@ -25,6 +25,7 @@ export default class HistoryExport extends Command {
         });
         const kept = new Set(data.runs.map((r) => (r as { run_id: string }).run_id));
         data.usage = data.usage.filter((u) => kept.has(String((u as { run_id: string }).run_id)));
+        data.resources = data.resources.filter((r) => kept.has(String((r as { run_id: string }).run_id)));
       }
       this.logJson({ exportedAt: new Date().toISOString(), schemaVersion: 1, ...data });
     } finally {
