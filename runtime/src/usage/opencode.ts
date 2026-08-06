@@ -10,7 +10,7 @@ const MAX_DBS = 500;
 
 interface DbSchema {
   hasMessages: boolean;
-  hasTime: boolean;
+  timeCol: string | null;
   hasTokens: boolean;
   hasCost: boolean;
   hasModel: boolean;
@@ -45,7 +45,7 @@ function schemaOf(db: DatabaseSync): DbSchema | null {
   const names = new Set(cols.map((c) => c.name));
   return {
     hasMessages: true,
-    hasTime: names.has("time") || names.has("created_at") || names.has("timestamp"),
+    timeCol: (["time", "created_at", "timestamp"] as const).find((c) => names.has(c)) ?? null,
     hasTokens: names.has("tokens") || names.has("input_tokens") || names.has("tokens_in"),
     hasCost: names.has("cost"),
     hasModel: names.has("modelID") || names.has("model") || names.has("model_id"),
@@ -178,11 +178,11 @@ function parseDb(
       return { usage: [], ingested: 0, skipped: 0, cutShort: false, status: "unsupported" };
     }
     const cursorSeen = cursor ? Number(cursor.offset) : 0;
-    const timeCol = "time";
     const lastTime = cursorSeen;
+    const timeCol = schema.timeCol;
     let rows: Record<string, unknown>[];
     try {
-      rows = schema.hasTime
+      rows = timeCol
         ? (db.prepare(`SELECT * FROM messages WHERE ${timeCol} > ? ORDER BY ${timeCol}`).all(lastTime) as Record<string, unknown>[])
         : (db.prepare("SELECT * FROM messages").all() as Record<string, unknown>[]);
     } catch {
@@ -223,7 +223,7 @@ function parseDb(
         eventKey,
       });
     }
-    store.setSourceCursor(dbPath, st.size, st.mtimeMs, schema.hasTime ? maxTime : st.size);
+    store.setSourceCursor(dbPath, st.size, st.mtimeMs, timeCol ? maxTime : st.size);
     return { usage, ingested: usage.length, skipped: skippedCount, cutShort };
   } finally {
     db.close();

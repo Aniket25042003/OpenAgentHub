@@ -216,3 +216,122 @@ async def test_scopes_enumeration_complete():
         "billing:manage",
     }
     assert set(TOKEN_SCOPES) == expected
+
+
+@pytest.mark.asyncio
+async def test_read_only_token_cannot_yank_or_manage_members(client):
+    from tests.factories import auth_header, publish, signed_package
+
+    token, uid = await create_user()
+    archive, sig, _, _ = signed_package("acme", "pkg", "1.0.0")
+    await publish(client, token, "acme", "pkg", "1.0.0", archive, sig)
+    async with get_session_factory()() as s:
+        user = await s.get(User, uid)
+        raw, _ = await create_api_token(s, user, label="ro", scopes=["packages:read"])
+        await s.commit()
+
+    yanked = await client.post(
+        "/api/v1/admin/agents/acme/pkg/versions/1.0.0/yank",
+        headers=auth_header(raw),
+        json={"yanked": True},
+    )
+    assert yanked.status_code == 403
+
+    await client.post(
+        "/api/v1/orgs", headers=auth_header(token), json={"slug": "acme", "displayName": "Acme"}
+    )
+    await create_user("member-eve-readonly")
+    await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(token),
+        json={"username": "member-eve-readonly", "role": "read_only"},
+    )
+    member = await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(raw),
+        json={"username": "member-eve-readonly", "role": "read_only"},
+    )
+    assert member.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_org_scoped_token_works_for_member(client):
+    from tests.factories import auth_header
+
+    token, uid = await create_user()
+    member_token, _ = await create_user("org-member-ced")
+    await client.post(
+        "/api/v1/orgs", headers=auth_header(token), json={"slug": "acme", "displayName": "Acme"}
+    )
+    await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(token),
+        json={"username": "org-member-ced", "role": "maintainer"},
+    )
+    org = None
+    from app.organizations.models import Organization
+
+    from sqlalchemy import select
+
+    async with get_session_factory()() as s:
+        org = (await s.execute(select(Organization).where(Organization.slug == "acme"))).scalar_one()
+
+    res = await client.post(
+        "/api/v1/tokens",
+        headers=auth_header(member_token),
+        json={"label": "org-ci", "scopes": ["packages:read"], "organizationId": org.id},
+    )
+    assert res.status_code == 201, res.text
+
+
+@pytest.mark.asyncio
+async def test_mint_token_scoped_to_foreign_org_rejected(client):
+    from app.organizations.models import Organization
+    from sqlalchemy import select
+
+    from tests.factories import auth_header
+
+    owner_token, _ = await create_user()
+    stranger_token, _ = await create_user("org-stranger-mint")
+    await client.post(
+        "/api/v1/orgs", headers=auth_header(owner_token), json={"slug": "acme", "displayName": "Acme"}
+    )
+    async with get_session_factory()() as s:
+        org = (await s.execute(select(Organization).where(Organization.slug == "acme"))).scalar_one()
+        await s.commit()
+    res = await client.post(
+        "/api/v1/tokens",
+        headers=auth_header(stranger_token),
+        json={"label": "other-org", "scopes": ["packages:read"], "organizationId": org.id},
+    )
+    assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_issue_service_account_token_sets_org_and_sa_flag(client):
+    from tests.factories import auth_header
+
+    token, uid = await create_user()
+    await client.post(
+        "/api/v1/orgs", headers=auth_header(token), json={"slug": "acme", "displayName": "Acme"}
+    )
+    sa = await client.post(
+        "/api/v1/orgs/acme/service-accounts",
+        headers=auth_header(token),
+        json={"name": "ci", "role": "maintainer"},
+    )
+    assert sa.status_code == 201, sa.text
+    sa_id = sa.json()["id"]
+
+    minted = await client.post(
+        f"/api/v1/orgs/acme/service-accounts/{sa_id}/tokens",
+        headers=auth_header(token),
+        json={"label": "ci-key", "scopes": ["packages:read"]},
+    )
+    assert minted.status_code == 201, minted.text
+    body = minted.json()
+    assert body["token"].startswith("oah_")
+    async with get_session_factory()() as s:
+        row = await s.get(ApiToken, body["id"])
+        assert row.is_service_account is True
+        assert row.organization_id is not None

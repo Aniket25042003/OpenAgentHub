@@ -86,6 +86,11 @@ async def create_api_token(
         denied = granted - allowed
         if denied:
             raise TokenError(f"scopes not allowed by policy: {', '.join(sorted(denied))}")
+    if organization_id is not None:
+        from app.organizations.repositories import OrganizationRepository
+
+        if await OrganizationRepository(session).membership_by_id(organization_id, user.id) is None:
+            raise TokenError("you must be a member of the organization the token is scoped to")
 
     lifetime = timedelta(days=expires_in_days or settings.token_default_ttl_days)
     if lifetime > timedelta(days=settings.token_max_lifetime_days):

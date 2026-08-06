@@ -195,3 +195,130 @@ async def test_catalog_and_search_never_leak_private(client):
     catalog = await client.get("/api/v1/catalog")
     assert catalog.status_code == 200
     assert all(i["name"] != "secret" for i in catalog.json()["items"])
+
+
+async def test_owner_can_search_own_private_package(client):
+    token, _ = await create_user(f"vis-seek-{uuid.uuid4().hex[:6]}")
+    _ = await _publish(client, token, "acme", "secret")
+    await client.patch(
+        "/api/v1/agents/acme/secret/visibility",
+        headers=auth_header(token),
+        json={"visibility": "private"},
+    )
+
+    mine = await client.get("/api/v1/agents", params={"q": "secret"}, headers=auth_header(token))
+    assert mine.status_code == 200
+    assert [i["name"] for i in mine.json()["items"]] == ["secret"]
+
+    anon = await client.get("/api/v1/agents", params={"q": "secret"})
+    assert not anon.json()["items"]
+
+
+async def test_grants_rejected_on_internal_package(client):
+    owner_token, _ = await create_user(f"vis-gi-{uuid.uuid4().hex[:6]}")
+    admin_token, _ = await create_user("granted-admin-ivy")
+    await client.post(
+        "/api/v1/orgs", headers=auth_header(owner_token), json={"slug": "acme", "displayName": "Acme"}
+    )
+    await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(owner_token),
+        json={"username": "granted-admin-ivy", "role": "administrator"},
+    )
+    _ = await _publish(client, owner_token, "acme", "secret")
+    res = await client.patch(
+        "/api/v1/agents/acme/secret/visibility",
+        headers=auth_header(owner_token),
+        json={"visibility": "internal", "organizationSlug": "acme"},
+    )
+    assert res.status_code == 200, res.text
+
+    grant = await client.post(
+        "/api/v1/agents/acme/secret/grants",
+        headers=auth_header(owner_token),
+        json={"username": "granted-admin-ivy"},
+    )
+    assert grant.status_code == 400
+
+
+async def test_publish_internal_without_org_rejected(client):
+    owner_token, _ = await create_user(f"vis-pub-{uuid.uuid4().hex[:6]}")
+    archive, sig, _, _ = signed_package("acme", "secret", "1.0.0")
+    await client.post("/api/v1/keys", headers=auth_header(owner_token), json={"publicKey": sig["publicKey"]})
+    res = await client.put(
+        "/api/v1/agents/acme/secret/versions/1.0.0",
+        headers=auth_header(owner_token),
+        params={"visibility": "internal"},
+        files={
+            "archive": ("secret-1.0.0.ahb", archive, "application/octet-stream"),
+            "signature": ("signature.sig.json", __import__("json").dumps(sig), "application/json"),
+        },
+    )
+    assert res.status_code == 400
+
+
+async def test_publish_internal_with_org_binds_and_visible_to_members(client):
+    owner_token, _ = await create_user(f"vis-ib-{uuid.uuid4().hex[:6]}")
+    member_token, _ = await create_user("org-member-pia")
+    outsider_token, _ = await create_user()
+    await client.post(
+        "/api/v1/orgs", headers=auth_header(owner_token), json={"slug": "acme", "displayName": "Acme"}
+    )
+    await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(owner_token),
+        json={"username": "org-member-pia", "role": "read_only"},
+    )
+    archive, sig, _, name = signed_package("acme", "secret", "1.0.0")
+    await client.post("/api/v1/keys", headers=auth_header(owner_token), json={"publicKey": sig["publicKey"]})
+    res = await client.put(
+        "/api/v1/agents/acme/secret/versions/1.0.0",
+        headers=auth_header(owner_token),
+        params={"visibility": "internal", "organizationSlug": "acme"},
+        files={
+            "archive": ("secret-1.0.0.ahb", archive, "application/octet-stream"),
+            "signature": ("signature.sig.json", __import__("json").dumps(sig), "application/json"),
+        },
+    )
+    assert res.status_code == 200, res.text
+
+    assert (
+        await client.get("/api/v1/agents/acme/secret", headers=auth_header(member_token))
+    ).status_code == 200
+    assert (
+        await client.get("/api/v1/agents/acme/secret", headers=auth_header(outsider_token))
+    ).status_code == 404
+
+
+async def test_org_maintainer_cannot_flip_visibility_to_public(client):
+    owner_token, _ = await create_user(f"vis-flip-{uuid.uuid4().hex[:6]}")
+    maintainer_token, _ = await create_user("org-maintainer-oscar")
+    await client.post(
+        "/api/v1/orgs", headers=auth_header(owner_token), json={"slug": "acme", "displayName": "Acme"}
+    )
+    await client.post(
+        "/api/v1/orgs/acme/members",
+        headers=auth_header(owner_token),
+        json={"username": "org-maintainer-oscar", "role": "maintainer"},
+    )
+    _ = await _publish(client, owner_token, "acme", "secret")
+    res = await client.patch(
+        "/api/v1/agents/acme/secret/visibility",
+        headers=auth_header(owner_token),
+        json={"visibility": "internal", "organizationSlug": "acme"},
+    )
+    assert res.status_code == 200, res.text
+
+    flip = await client.patch(
+        "/api/v1/agents/acme/secret/visibility",
+        headers=auth_header(maintainer_token),
+        json={"visibility": "public"},
+    )
+    assert flip.status_code == 400
+    assert (
+        await client.patch(
+            "/api/v1/agents/acme/secret/visibility",
+            headers=auth_header(owner_token),
+            json={"visibility": "public"},
+        )
+    ).status_code == 200
