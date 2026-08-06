@@ -61,6 +61,17 @@ async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _ensure_latest_version_columns()
+    await _ensure_login_issued_at()
+
+
+async def _ensure_login_issued_at() -> None:
+    from sqlalchemy import text
+
+    async with _engine.begin() as conn:
+        try:
+            await conn.execute(text("ALTER TABLE login_transactions ADD COLUMN issued_at DATETIME"))
+        except Exception:  # noqa: BLE001 — column already present
+            pass
 
 
 async def _ensure_latest_version_columns() -> None:
