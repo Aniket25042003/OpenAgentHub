@@ -10,6 +10,7 @@ from app.db import get_session
 from app.ratelimit import RateLimitRule, enforce
 from app.entitlements.application import QuotaExceeded, check_publish_rate
 from app.quotas.application import QuotaExceeded as WebQuotaExceeded
+from app.billing.application import BillingBlocked
 from app.identity.application import (
     require_active_user,
     require_scope,
@@ -382,6 +383,12 @@ async def publish_version(
                 "X-Quota-Reset": reset,
                 "X-Quota-Dimension": exc.dimension,
             },
+        ) from exc
+    except BillingBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+            headers={"X-Billing-Status": exc.status},
         ) from exc
     except QuotaExceeded as exc:
         raise HTTPException(

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.config import get_settings
 from app.db import dispose_db, init_db, ping_db
+from app.billing.routes import router as billing_router
 from app.identity.routes import auth_router as identity_auth_router
 from app.identity.routes import router as identity_router
 from app.organizations.routes import router as organizations_router
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(publisher_router)
     app.include_router(organizations_router)
     app.include_router(quotas_router)
+    app.include_router(billing_router)
 
     @app.exception_handler(RateLimitExceeded)
     async def rate_limit_handler(request: Request, exc: RateLimitExceeded):

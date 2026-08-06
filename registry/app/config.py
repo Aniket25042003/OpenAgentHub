@@ -71,6 +71,18 @@ class Settings(BaseSettings):
     org_quota_default_members: int = 25
     org_quota_default_service_accounts: int = 10
 
+    org_audit_retention_default_days: int = 90
+    billing_trial_days: int = 14
+    billing_grace_days: int = 7
+    billing_past_due_days: int = 14
+    billing_cancel_retention_days: int = 30
+    billing_webhook_secret: str = ""
+    billing_launchable_plans: str = "free"
+
+    @property
+    def billing_launchable_plan_list(self) -> set[str]:
+        return {p.strip() for p in self.billing_launchable_plans.split(",") if p.strip()}
+
     @property
     def cors_origin_list(self) -> list[str]:
         if self.cors_origins.strip() == "*":
