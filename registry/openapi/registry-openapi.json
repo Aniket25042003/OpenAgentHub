@@ -468,17 +468,6 @@
             "title": "Mode",
             "type": "string"
           },
-          "registryOrigin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Registryorigin"
-          },
           "requestedScopes": {
             "default": "cli",
             "title": "Requestedscopes",

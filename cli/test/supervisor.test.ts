@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UsageStore } from "@openagenthub/runtime";
-import type { ExitReason, RunProbe, RunRecord, RunState } from "../src/lib/supervisor.ts";
+import type { RunProbe, RunRecord, RunState } from "../src/lib/supervisor.ts";
 
 const home = mkdtempSync(join(tmpdir(), "oah-sup-"));
 process.env.AGENT_HOME = home;
@@ -235,8 +235,6 @@ describe("startManagedRun", () => {
     m.removeRun(rec.runId);
   });
 });
-
-void (null as unknown as ExitReason | undefined);
 
 describe("usage store sync", () => {
   it("syncs every writeRun into the usage store", () => {

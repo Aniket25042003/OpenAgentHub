@@ -171,7 +171,6 @@ class GithubExchangeResponse(BaseModel):
 class DeviceLoginRequest(BaseModel):
     clientName: str = "cli"
     requestedScopes: str = "cli"
-    registryOrigin: str | None = None
     mode: str = "poll"
 
 

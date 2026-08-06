@@ -53,6 +53,20 @@ class CatalogCache:
         self._entries[key] = entry
         return entry
 
+    async def get_or_put(
+        self,
+        key: str,
+        watermark: str,
+        loader,
+    ) -> CatalogCacheEntry:
+        """Single-flight load: one DB query per (key, watermark) even under concurrent misses."""
+        async with self._lock(key):
+            entry = self.get(key, watermark)
+            if entry is not None:
+                return entry
+            payload = await loader()
+            return self.put(key, watermark, payload)
+
     def _lock(self, key: str) -> asyncio.Lock:
         return self._locks.setdefault(key, asyncio.Lock())
 

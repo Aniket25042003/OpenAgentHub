@@ -22,16 +22,6 @@ from app.schemas import (
 router = APIRouter(prefix="/api/v1")
 
 
-def _write_limits(request: Request, user) -> None:
-    settings = get_settings()
-    enforce(
-        request,
-        ip_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
-        account_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
-        account_key=str(user.id),
-    )
-
-
 @router.get("/me/overview", response_model=PublisherOverview)
 async def overview(session: AsyncSession = Depends(get_session), user = Depends(resolve_cookie_active_user)):
     return await application.publisher_overview(session, user)

@@ -560,7 +560,7 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
     ver = await _resolve_version(session, agent, version)
     if ver is None:
         raise VersionNotFound("version not found")
-    await _require_namespace_or_reviewer(session, user, namespace)
+    await _require_namespace_or_reviewer(session, user, namespace, owner_only=True)
     changed = VersionRepository(session).set_yanked(ver, yanked)
     if changed:
         await AuditRepository(session).record(
@@ -574,9 +574,14 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
     return changed
 
 
-async def _require_namespace_or_reviewer(session: AsyncSession, user: User, namespace: str) -> None:
+async def _require_namespace_or_reviewer(session: AsyncSession, user: User, namespace: str, *, owner_only: bool = False) -> None:
     repo = NamespaceRepository(session)
     ns = await repo.by_name(namespace)
     member = await repo.is_member(ns, user.id) if ns is not None else None
+    if owner_only:
+        owns = member is not None and member.role == "owner"
+        if not owns and user.role not in ("reviewer", "admin"):
+            raise RegistryError("only a namespace owner or reviewer/admin can do that")
+        return
     if member is None and user.role not in ("reviewer", "admin"):
         raise RegistryError("you are not a member of this namespace")

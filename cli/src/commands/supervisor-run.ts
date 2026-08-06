@@ -74,7 +74,7 @@ export default class SupervisorRun extends Command {
       store.recordResourceSample({
         runId: record.runId,
         containerId,
-        memBytes: Number(stats.memUsage?.split("/")[0]?.trim().replace(/[^\d.]/g, "")) || undefined,
+        memBytes: memUsageBytes(stats.memUsage?.split("/")[0]),
         cpuPercent: Number(stats.cpuPerc?.replace("%", "")) || undefined,
       });
       store.close();
@@ -120,8 +120,8 @@ export default class SupervisorRun extends Command {
       const current = readRun(record.runId) ?? record;
       writeRun({
         ...current,
-        state: code === 0 ? "exited" : "failed",
-        exitCode: code,
+        state: reason === "manual-stop" ? "exited" : code === 0 ? "exited" : "failed",
+        exitCode: reason === "manual-stop" ? 0 : code,
         exitReason: reason,
         endedAt: new Date().toISOString(),
       });
@@ -174,7 +174,7 @@ export default class SupervisorRun extends Command {
           ? "manual-stop"
           : result.result.timedOut
             ? "timeout"
-            : result.result.exitCode === 137
+            : result.sandbox === "container" && result.result.exitCode === 137
               ? "oom"
               : "exit";
       writeRun({
@@ -189,4 +189,20 @@ export default class SupervisorRun extends Command {
       finalize(1, "crashed");
     }
   }
+}
+
+function memUsageBytes(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const m = raw.trim().match(/^([\d.]+)\s*(B|kB|KiB|MB|MiB|GB|GiB)?$/i);
+  if (!m) return undefined;
+  const mult: Record<string, number> = {
+    b: 1,
+    kb: 1_000,
+    kib: 1_024,
+    mb: 1_000_000,
+    mib: 1_024 ** 2,
+    gb: 1_000_000_000,
+    gib: 1_024 ** 3,
+  };
+  return Math.round(Number(m[1]) * (mult[(m[2] ?? "B").toLowerCase()] ?? 1));
 }

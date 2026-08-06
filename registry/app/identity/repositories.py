@@ -186,5 +186,5 @@ class LoginTransactionRepository:
             await self.session.execute(select(LoginTransaction).where(LoginTransaction.user_code == user_code))
         ).scalar_one_or_none()
 
-    async def mark_completed(self, row: LoginTransaction) -> None:
-        row.completed_at = utcnow()
+    async def mark_issued(self, row: LoginTransaction) -> None:
+        row.issued_at = utcnow()
