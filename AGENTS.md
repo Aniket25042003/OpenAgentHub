@@ -98,12 +98,18 @@ cd web && npx next start -p 3100   # or: npm run dev -w @openagenthub/web
 6. **Registry API is the SDK contract** — `sdk/src/registry.ts` defines the exact
    routes/shapes (`/api/v1/agents...`, `AgentSummary`, `AgentVersionDetail`).
    Keep the FastAPI implementation in lockstep. `version=latest` is an alias.
-7. **SQLite for dev/tests, Postgres for prod** (`REGISTRY_DATABASE_URL`); archive
+7. **CLI alias deprecation timeline**: `agent` is a temporary one-release
+   compatibility alias for `openagenthub`. It stays until one release after the
+   next `@openagenthub/cli` major, then it is removed in a single release with
+   a breaking-change migration note in the PR and release notes. Docs, scripts,
+   and examples must always use `openagenthub`; only the GitHub `agent` alias
+   PR for that removal may touch the alias plumbing.
+8. **SQLite for dev/tests, Postgres for prod** (`REGISTRY_DATABASE_URL`); archive
    blobs go to a configurable filesystem store (`REGISTRY_STORAGE_DIR`), not the DB.
-8. **Prefer zero-dependency agent code.** Reference agents use only the Python
+9. **Prefer zero-dependency agent code.** Reference agents use only the Python
    stdlib so container runs need no dependency install.
-9. **Don't add comments to code** unless asked; keep the codebase dense but
-   self-explanatory.
+10. **Don't add comments to code** unless asked; keep the codebase dense but
+    self-explanatory.
 
 ## Where things live when you need them
 

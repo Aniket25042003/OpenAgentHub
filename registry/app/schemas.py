@@ -213,6 +213,29 @@ class SessionsResponse(BaseModel):
     sessions: list[SessionInfo]
 
 
+class SecurityEventInfo(BaseModel):
+    id: int
+    action: str
+    targetType: str | None = None
+    targetId: int | None = None
+    detail: dict = {}
+    createdAt: str
+
+
+class SecurityEventsResponse(BaseModel):
+    events: list[SecurityEventInfo]
+
+
+class AccountDeleteRequest(BaseModel):
+    confirm: str = ""
+
+
+class AccountDeleteResponse(BaseModel):
+    ok: bool = True
+    username: str
+    status: str = "deleted"
+
+
 class AuthMeResponse(BaseModel):
     username: str
     role: str = "publisher"

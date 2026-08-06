@@ -18,10 +18,12 @@ from app.identity.application import (
     KeyNotFound,
     KeyNotOwned,
     UserNotFound,
+    delete_account,
     get_current_user,
     issue_token,
     list_signing_keys,
     login_with_github,
+    recent_security_events,
     register_signing_key,
     require_active_user,
     require_admin,
@@ -34,12 +36,15 @@ from app.identity.oauth import authorize_url, cookie_value, is_allowed_redirect,
 from app.identity.repositories import ApiTokenRepository, SessionRepository
 from app.identity.sessions import agreements_status
 from app.schemas import (
+    AccountDeleteRequest,
+    AccountDeleteResponse,
     AgreementsRequest,
-    ApiTokenCreateRequest,
+ApiTokenCreateRequest,
     ApiTokenCreateResponse,
     ApiTokenInfo,
     ApiTokenRotateRequest,
     ApiTokensResponse,
+    AuthMeResponse,
     DeviceLoginRequest,
     DeviceLoginResponse,
     DevicePollRequest,
@@ -47,6 +52,8 @@ from app.schemas import (
     GithubExchangeRequest,
     GithubExchangeResponse,
     MeResponse,
+    SecurityEventInfo,
+    SecurityEventsResponse,
     SessionInfo,
     SessionsResponse,
     SignerKeyInfo,
@@ -238,6 +245,60 @@ async def me(session: AsyncSession = Depends(get_session), user: User = Depends(
         status=user.status,
         publicKeys=[SignerKeyInfo.from_key(k) for k in keys],
     )
+
+
+@router.get("/me/profile", response_model=AuthMeResponse)
+async def my_profile(request: Request, session: AsyncSession = Depends(get_session)):
+    user = await resolve_cookie_user(request, session)
+    return AuthMeResponse(
+        username=user.username,
+        role=user.role,
+        status=user.status,
+        githubId=user.github_id,
+        avatarUrl=user.avatar_url,
+        agreements=agreements_status(user),
+        sessions=session_list(await sess.list_for_user(session, user)),
+    )
+
+
+@router.get("/me/security-events", response_model=SecurityEventsResponse)
+async def my_security_events(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    limit: int = 50,
+):
+    user = await resolve_cookie_user(request, session)
+    events = await recent_security_events(session, user, limit=min(limit, 200))
+    return SecurityEventsResponse(
+        events=[
+            SecurityEventInfo(
+                id=e.id,
+                action=e.action,
+                targetType=e.target_type,
+                targetId=e.target_id,
+                detail=e.detail or {},
+                createdAt=_dt_iso(e.created_at),
+            )
+            for e in events
+        ]
+    )
+
+
+@router.post("/me/delete", response_model=AccountDeleteResponse)
+async def delete_my_account(
+    req: AccountDeleteRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    if req.confirm != "delete-account":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="type 'delete-account' to confirm",
+        )
+    user = await resolve_cookie_user(request, session)
+    await delete_account(session, user)
+    await session.commit()
+    return AccountDeleteResponse(username=user.username, status="deleted")
 
 
 # ---- Hosted web browser session / device authorization endpoints ----

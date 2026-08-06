@@ -149,7 +149,7 @@ ALLOWED_CROSS_MODULE = {
     "publisher/application.py": {"registry", "identity", "audit"},
     "publisher/routes.py": {"identity"},
     "entitlements/application.py": {"audit", "identity"},
-    "identity/application.py": {"audit"},
+    "identity/application.py": {"audit", "organizations"},
     "identity/sessions.py": {"audit"},
     "identity/api_tokens.py": {"audit"},
     "organizations/application.py": {"audit", "identity", "billing", "quotas"},

@@ -36,6 +36,10 @@ class UserNotFound(IdentityError):
     status_code = status.HTTP_404_NOT_FOUND
 
 
+class AccountDeletionBlocked(IdentityError):
+    status_code = status.HTTP_409_CONFLICT
+
+
 def issue_token(user_id: int, username: str) -> str:
     settings = get_settings()
     now = int(time.time())
@@ -285,9 +289,41 @@ async def login_with_github(session: AsyncSession, code: str) -> User:
     if user is None:
         user = await repo.create(username=username, github_id=github_id, avatar_url=avatar_url)
     else:
+        if user.status == "deleted":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account has been deleted")
         user.username = username
         user.avatar_url = avatar_url or user.avatar_url
     return user
+
+
+async def recent_security_events(session: AsyncSession, user: User, *, limit: int = 50) -> list:
+    return await AuditRepository(session).recent_for_actor(actor_id=user.id, limit=limit)
+
+
+async def delete_account(session: AsyncSession, user: User) -> None:
+    """Permanently close the account: revoke credentials, leave every
+    organization, mark the user deleted, and audit the closure."""
+    await SessionRepository(session).revoke_all_for_user(user.id)
+    token_repo = ApiTokenRepository(session)
+    for token in await token_repo.for_user(user.id):
+        token_repo.revoke(token)
+    key_repo = SigningKeyRepository(session)
+    for key in await key_repo.for_user(user.id):
+        key_repo.revoke(key)
+    from app.organizations.application import remove_user_memberships
+
+    try:
+        await remove_user_memberships(session, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    user.status = "deleted"
+    await AuditRepository(session).record(
+        actor_id=user.id,
+        action="account.deleted",
+        target_type="user",
+        target_id=user.id,
+        detail={"username": user.username},
+    )
 
 
 async def register_signing_key(

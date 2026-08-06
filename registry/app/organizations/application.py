@@ -265,6 +265,36 @@ async def remove_member(
     return {"slug": slug, "username": username}
 
 
+async def remove_user_memberships(session: AsyncSession, user: User) -> None:
+    """Remove a user from every organization and team (account-deletion path)."""
+    org_repo = OrganizationRepository(session)
+    team_repo = TeamRepository(session)
+    for org, _role in await org_repo.for_user(user.id):
+        member = await org_repo.membership(org, user.id)
+        if member is not None and member.is_owner:
+            owners = [m for m in await org_repo.members(org) if m.is_owner]
+            if len(owners) <= 1:
+                raise OrganizationForbidden(
+                    f"transfer ownership of '{org.slug}' before deleting your account"
+                )
+    for org, _role in await org_repo.for_user(user.id):
+        member = await org_repo.membership(org, user.id)
+        if member is not None:
+            await session.delete(member)
+            await AuditRepository(session).record(
+                actor_id=user.id,
+                action="organization.member.removed",
+                target_type="organization_member",
+                target_id=member.id,
+                organization_id=org.id,
+                detail={"slug": org.slug, "reason": "account deleted"},
+            )
+        for team in await team_repo.list_for(org):
+            tm = await team_repo.membership(team, user.id)
+            if tm is not None:
+                await session.delete(tm)
+
+
 async def leave_organization(session: AsyncSession, user: User, slug: str) -> dict:
     org_repo = OrganizationRepository(session)
     org = await org_repo.by_slug(slug)

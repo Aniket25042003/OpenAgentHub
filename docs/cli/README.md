@@ -5,9 +5,9 @@
 (`cli/bin/run.js`). It imports the SDK for pack/verify and the runtime engine
 for execution.
 
-The `agent` alias is deprecated and will be removed after the next major
-release (see the deprecation timeline in `AGENTS.md`); docs and scripts use
-`openagenthub`.
+The `agent` alias is deprecated and will be removed one release after the next
+`@openagenthub/cli` major (see the deprecation timeline in `AGENTS.md`); docs and
+scripts use `openagenthub`.
 
 ## Single-package distribution
 

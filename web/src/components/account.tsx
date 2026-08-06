@@ -18,19 +18,55 @@ interface Agreements {
   publisher: string;
 }
 
+interface Profile {
+  username: string;
+  role: string;
+  status: string;
+  githubId?: string;
+  avatarUrl?: string;
+  agreements: Agreements;
+}
+
+interface SecurityEvent {
+  id: number;
+  action: string;
+  targetType?: string;
+  targetId?: number;
+  detail?: Record<string, unknown>;
+  createdAt: string;
+}
+
 interface AccountState {
   signedIn: boolean;
   sessions: SessionInfo[];
   agreements: Agreements;
+  profile?: Profile;
+  securityEvents: SecurityEvent[];
   error?: string;
 }
 
 const REGISTRY_URL = process.env.NEXT_PUBLIC_REGISTRY_URL ?? "http://localhost:8000";
 
+const EMPTY_AGREEMENTS: Agreements = { tos: "pending", privacy: "pending", publisher: "pending" };
+
 export function Account() {
-  const [state, setState] = useState<AccountState>({ signedIn: false, sessions: [], agreements: { tos: "pending", privacy: "pending", publisher: "pending" } });
+  const [state, setState] = useState<AccountState>({
+    signedIn: false,
+    sessions: [],
+    agreements: EMPTY_AGREEMENTS,
+    securityEvents: [],
+  });
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | undefined>();
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  const emptyState = (): AccountState => ({
+    signedIn: false,
+    sessions: [],
+    agreements: { ...EMPTY_AGREEMENTS },
+    securityEvents: [],
+  });
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -38,16 +74,20 @@ export function Account() {
     try {
       const res = await fetch("/api/account/sessions", { cache: "no-store" });
       if (res.status === 401) {
-        setState({ signedIn: false, sessions: [], agreements: { tos: "pending", privacy: "pending", publisher: "pending" } });
+        setState(emptyState());
         return;
       }
       if (!res.ok) throw new Error(`sessions API returned ${res.status}`);
       const sessionsBody = (await res.json()) as { sessions: SessionInfo[] };
       const agreeRes = await fetch("/api/account/agreements", { cache: "no-store" });
-      const agreements = agreeRes.ok ? ((await agreeRes.json()) as Agreements) : { tos: "pending", privacy: "pending", publisher: "pending" };
-      setState({ signedIn: true, sessions: sessionsBody.sessions, agreements });
+      const agreements = agreeRes.ok ? ((await agreeRes.json()) as Agreements) : { ...EMPTY_AGREEMENTS };
+      const profileRes = await fetch("/api/account/profile", { cache: "no-store" });
+      const profile = profileRes.ok ? ((await profileRes.json()) as Profile) : undefined;
+      const eventsRes = await fetch("/api/account/security-events", { cache: "no-store" });
+      const securityEvents = eventsRes.ok ? ((await eventsRes.json()) as { events: SecurityEvent[] }).events : [];
+      setState({ signedIn: true, sessions: sessionsBody.sessions, agreements, profile, securityEvents });
     } catch (err) {
-      setState({ signedIn: false, sessions: [], agreements: { tos: "pending", privacy: "pending", publisher: "pending" }, error: (err as Error).message });
+      setState({ ...emptyState(), error: (err as Error).message });
     } finally {
       setLoading(false);
     }
@@ -76,6 +116,34 @@ export function Account() {
     if (res.ok) setMessage("Agreements accepted. You are clear to publish.");
     else setMessage(`Could not accept agreements (${res.status}).`);
     await refresh();
+  };
+
+  const deleteAccount = async () => {
+    if (deleteConfirm !== "delete my account") {
+      setMessage("Type 'delete my account' to confirm.");
+      return;
+    }
+    setDeleting(true);
+    setMessage(undefined);
+    try {
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "delete-account" }),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        await fetch("/api/account/logout", { method: "POST", cache: "no-store" });
+        window.location.href = "/account";
+        return;
+      }
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      setMessage(body.error ?? `Could not delete account (${res.status}).`);
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const logout = async () => {
@@ -139,6 +207,26 @@ export function Account() {
         {message && <p className="muted" style={{ marginTop: 12 }}>{message}</p>}
       </div>
 
+      {state.profile && (
+        <div className="content-block">
+          <h2>Profile</h2>
+          <div className="row">
+            {state.profile.avatarUrl && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={state.profile.avatarUrl} width={48} height={48} alt="" style={{ borderRadius: "50%" }} />
+            )}
+            <div>
+              <p><strong>{state.profile.username}</strong></p>
+              <p className="muted">
+                Linked GitHub identity {state.profile.githubId ? `#${state.profile.githubId}` : "(none)"}
+                {" · "}role <code className="inline">{state.profile.role}</code>
+              </p>
+            </div>
+            <span className={`badge ${state.profile.status === "active" ? "" : "bad"}`}>{state.profile.status}</span>
+          </div>
+        </div>
+      )}
+
       <div className="content-block">
         <h2>Agreements</h2>
         {pending ? (
@@ -191,6 +279,53 @@ export function Account() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="content-block">
+        <h2>Security events</h2>
+        {state.securityEvents.length === 0 ? (
+          <p className="muted">No security events recorded yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Action</th>
+                <th>Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.securityEvents.map((e) => (
+                <tr key={e.id}>
+                  <td>{new Date(e.createdAt).toLocaleString()}</td>
+                  <td><code className="inline">{e.action}</code></td>
+                  <td className="muted">{e.targetType ? `${e.targetType}#${e.targetId ?? "?"}` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="content-block">
+        <h2>Delete account</h2>
+        <p className="muted">
+          Permanently closes this account, revokes every session, token, and signing key, and removes you from
+          all organizations. Published packages remain but can no longer be maintained.
+        </p>
+        <div className="row">
+          <input
+            type="text"
+            value={deleteConfirm}
+            onChange={(e) => setDeleteConfirm(e.target.value)}
+            placeholder="type 'delete my account'"
+            aria-label="confirmation text"
+            style={{ flex: 1, maxWidth: 320 }}
+          />
+          <button type="button" className="btn btn-primary" onClick={deleteAccount} disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete account"}
+          </button>
+        </div>
       </div>
     </main>
   );
