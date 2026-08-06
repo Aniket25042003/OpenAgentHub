@@ -25,6 +25,10 @@ class FakeSessionSettings:
     session_absolute_ttl_seconds = 604800
     session_idle_ttl_seconds = 1209600
     session_rotate_after_seconds = 3600
+    session_cookie_domain = ""
+    session_cookie_secure = None
+    device_login_ttl_seconds = 900
+    device_approve_per_ip_per_hour = 60
     current_tos_version = 1
     current_privacy_version = 1
     current_publisher_agreement_version = 1
@@ -204,6 +208,63 @@ async def test_device_flow(client, session_settings, monkeypatch):
     assert body["accessToken"]
     assert body["username"] == "octocat"
     assert body["tokenType"] == "bearer"
+
+    replay = await client.post("/api/v1/auth/devices/token", json={"deviceCode": device_code})
+    assert replay.status_code == 400
+    assert replay.json()["detail"] == "expired_token"
+
+
+async def test_device_approve_origin_mismatch(client, session_settings):
+    user = await _octocat()
+    start = await client.post("/api/v1/auth/devices", json={"clientName": "cli"})
+    data = start.json()
+    async with get_session_factory()() as s:
+        token, _ = await sessions_mod.create_session(s, user, audience="web")
+        await s.commit()
+
+    res = await client.post(
+        "/api/v1/auth/approve",
+        params={"user_code": data["userCode"]},
+        cookies={"oah_session": token},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert res.status_code == 403
+
+    ok = await client.post(
+        "/api/v1/auth/approve",
+        params={"user_code": data["userCode"]},
+        cookies={"oah_session": token},
+        headers={"Origin": "http://localhost:8000"},
+    )
+    assert ok.status_code == 200
+
+
+async def test_logout_revokes_session(client, session_settings):
+    user = await _octocat()
+    async with get_session_factory()() as s:
+        token, _ = await sessions_mod.create_session(s, user, audience="web")
+        await s.commit()
+
+    res = await client.post("/api/v1/logout", cookies={"oah_session": token})
+    assert res.status_code == 200
+
+    from fastapi import HTTPException
+
+    async with get_session_factory()() as s:
+        with pytest.raises(HTTPException) as exc:
+            await sessions_mod.session_user(s, token)
+        assert exc.value.status_code == 401
+
+
+async def test_cookie_domain_and_secure(client, session_settings):
+    session_settings.session_cookie_domain = "openagenthub.dev"
+    session_settings.session_cookie_secure = True
+    val = oauth_mod.cookie_value("tok")
+    assert "Domain=openagenthub.dev" in val
+    assert "Secure" in val
+    session_settings.session_cookie_domain = ""
+    session_settings.session_cookie_secure = None
+    assert "Domain=" not in oauth_mod.cookie_value("tok")
 
 
 async def test_agreements_flow(client, session_settings):

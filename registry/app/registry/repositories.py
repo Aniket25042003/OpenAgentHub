@@ -120,10 +120,13 @@ class AgentRepository:
         tags: str | None,
         models: str | None,
         include_internal: bool = False,
+        include_all: bool = False,
     ) -> list[Agent]:
         stmt = select(Agent).where(Agent.visibility == "public")
         if include_internal:
             stmt = select(Agent).where(Agent.visibility.in_(("public", "internal")))
+        if include_all:
+            stmt = select(Agent).where(Agent.visibility.in_(("public", "internal", "private")))
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(

@@ -1,18 +1,21 @@
 import { Command, Flags } from "@oclif/core";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { loadConfig, saveConfig } from "@openagenthub/runtime";
 import { RegistryClient } from "@openagenthub/sdk";
 import { DeviceAuthPendingError } from "@openagenthub/sdk";
 import { resolveRegistryUrl, saveCredential } from "../lib/credentials.js";
 
-const run = promisify(exec);
+const run = promisify(execFile);
 
 function openBrowser(url: string): void {
-  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  run(`${cmd} "${url}"`).catch(() => {
-    /* browser may not be available; user can open the URL manually */
-  });
+  if (process.platform === "darwin") {
+    run("open", [url]).catch(() => {});
+  } else if (process.platform === "win32") {
+    run("cmd.exe", ["/c", "start", "", url]).catch(() => {});
+  } else {
+    run("xdg-open", [url]).catch(() => {});
+  }
 }
 
 export default class Login extends Command {

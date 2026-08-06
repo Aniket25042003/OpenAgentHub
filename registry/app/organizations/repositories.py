@@ -43,6 +43,16 @@ class OrganizationRepository:
         ).scalar_one_or_none()
         return row
 
+    async def membership_by_id(self, organization_id: int, user_id: int) -> OrganizationMember | None:
+        return (
+            await self.session.execute(
+                select(OrganizationMember).where(
+                    OrganizationMember.organization_id == organization_id,
+                    OrganizationMember.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+
     async def create(
         self, *, slug: str, display_name: str, owner_id: int
     ) -> Organization:
@@ -223,6 +233,13 @@ class ServiceAccountRepository:
 
     async def by_id(self, sa_id: int) -> ServiceAccount | None:
         return await self.session.get(ServiceAccount, sa_id)
+
+    async def by_user_id(self, user_id: int) -> ServiceAccount | None:
+        return (
+            await self.session.execute(
+                select(ServiceAccount).where(ServiceAccount.user_id == user_id)
+            )
+        ).scalar_one_or_none()
 
     async def in_organization(self, organization: Organization, name: str) -> ServiceAccount | None:
         return (

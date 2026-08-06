@@ -244,6 +244,9 @@ class LoginTransactionRepository:
     async def mark_completed(self, row: LoginTransaction) -> None:
         row.completed_at = utcnow()
 
+    async def mark_issued(self, row: LoginTransaction) -> None:
+        row.issued_at = utcnow()
+
 
 class ApiTokenRepository:
     def __init__(self, session: AsyncSession) -> None:

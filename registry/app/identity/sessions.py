@@ -187,18 +187,21 @@ async def publisher_ready(session: AsyncSession, user: User) -> bool:
     return statuses["tos"] == "accepted" and statuses["publisher"] == "accepted"
 
 
+USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
 async def create_device_login(
     session: AsyncSession,
     *,
     client_name: str,
     requested_scopes: str,
-    registry_origin: str | None,
     mode: str = "poll",
 ) -> dict:
     settings = get_settings()
     device_code = secrets.token_urlsafe(32)
-    user_code = secrets.token_hex(3).upper()[:6]
+    user_code = "".join(secrets.choice(USER_CODE_ALPHABET) for _ in range(6))
     nonce = secrets.token_urlsafe(16)
+    host = settings.public_base_url.rstrip("/")
     row = await LoginTransactionRepository(session).create(
         device_code_hash=hash_token(device_code),
         user_code=user_code,
@@ -206,26 +209,33 @@ async def create_device_login(
         client_name=client_name,
         redirect_mode=mode,
         requested_scopes=requested_scopes,
-        registry_origin=registry_origin,
+        registry_origin=host,
         now=datetime.now(timezone.utc),
-        ttl_seconds=settings.session_absolute_ttl_seconds,
+        ttl_seconds=settings.device_login_ttl_seconds,
     )
-    host = settings.public_base_url.rstrip("/")
     return {
         "deviceCode": device_code,
         "userCode": user_code,
         "verificationUri": f"{host}/device?user_code={user_code}",
-        "expiresIn": settings.session_absolute_ttl_seconds,
+        "expiresIn": settings.device_login_ttl_seconds,
         "interval": 5,
         "_transactionId": row.id,
     }
 
 
-async def approve_device_login(session: AsyncSession, user: User, user_code: str) -> None:
+def _origins_match(a: str | None, b: str | None) -> bool:
+    if not a or not b:
+        return True
+    return a.rstrip("/").lower() == b.rstrip("/").lower()
+
+
+async def approve_device_login(session: AsyncSession, user: User, user_code: str, *, approving_origin: str | None = None) -> None:
     repo = LoginTransactionRepository(session)
     row = await repo.by_user_code(user_code)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="device code not found")
+    if approving_origin is not None and not _origins_match(row.registry_origin, approving_origin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="approval origin does not match login registry")
     if row.user_id is not None or row.completed_at is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already approved")
     row.user_id = user.id
@@ -249,11 +259,13 @@ async def poll_device_login(session: AsyncSession, device_code: str) -> dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="expired_token")
     if row.user_id is None or row.completed_at is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="authorization_pending")
+    if row.issued_at is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="expired_token")
     user = await UserRepository(session).by_id(row.user_id)
     if user is None or user.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user not available")
     token, _ = await create_session(session, user, audience="cli", device_label=row.client_name)
-    await repo.mark_completed(row)
+    await repo.mark_issued(row)
     await session.commit()
     return {
         "accessToken": token,

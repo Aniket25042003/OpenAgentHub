@@ -81,7 +81,7 @@ def _write_limits(request: Request, user) -> None:
     settings = get_settings()
     enforce(
         request,
-        ip_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
+        ip_rule=RateLimitRule(settings.ip_writes_per_hour, 3600),
         account_rule=RateLimitRule(settings.account_writes_per_hour, 3600),
         account_key=str(user.id),
     )
@@ -123,8 +123,8 @@ async def catalog(
     key = cache.cache_key(params)
     try:
         watermark = await CatalogRepository(session).watermark()
-        entry = cache.get(key, watermark)
-        if entry is None:
+
+        async def load_page() -> dict:
             page = await load_catalog_page(
                 session,
                 q=q,
@@ -139,13 +139,14 @@ async def catalog(
                 cursor_raw=cursor,
                 limit=limit,
             )
-            payload = CatalogResponse(
+            return CatalogResponse(
                 schemaVersion=1,
                 watermark=watermark,
                 items=[i.model_dump(mode="json") for i in page.items],
                 nextCursor=page.next_cursor,
             ).model_dump(mode="json")
-            entry = cache.put(key, watermark, payload)
+
+        entry = await cache.get_or_put(key, watermark, loader=load_page)
     except CatalogQueryError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception:  # noqa: BLE001
@@ -158,7 +159,7 @@ async def catalog(
                     "ETag": stale.etag,
                     "Cache-Control": f"public, max-age={settings.catalog_cache_ttl_seconds}",
                     "X-Catalog-Stale": "true",
-                    "Age": str(int(time.time() - stale.cached_at)),
+                    "Age": str(max(0, int(time.monotonic() - stale.cached_at))),
                 },
             )
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="catalog temporarily unavailable") from None
@@ -336,6 +337,7 @@ async def publish_version(
     signature: UploadFile,
     request: Request,
     visibility: str = "public",
+    organizationSlug: str | None = None,
     session: AsyncSession = Depends(get_session),
     user = Depends(require_scope("packages:publish")),
 ):
@@ -360,6 +362,7 @@ async def publish_version(
             archive_data=archive_data,
             signature_raw=signature_raw,
             visibility=visibility,
+            organization_slug=organizationSlug,
         )
     except ArchiveTooLarge as exc:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)) from exc
@@ -456,7 +459,7 @@ async def claim_namespace(
     req: NamespaceClaimRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_active_user),
+    user = Depends(require_scope("packages:manage")),
 ):
     _write_limits(request, user)
     try:
@@ -478,7 +481,7 @@ async def add_maintainer(
     req: MaintainerAddRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_active_user),
+    user = Depends(require_scope("packages:manage")),
 ):
     _write_limits(request, user)
     try:
@@ -504,7 +507,7 @@ async def yank_version(
     req: YankRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_active_user),
+    user = Depends(require_scope("packages:manage")),
 ):
     _write_limits(request, user)
     try:

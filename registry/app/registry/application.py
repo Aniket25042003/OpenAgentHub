@@ -14,7 +14,7 @@ from app.identity.repositories import SigningKeyRepository, UserRepository
 from app.outbox.repositories import OutboxRepository
 from app.registry.access import (
     VISIBILITIES,
-    can_manage,
+    can_manage_access,
     can_view,
 )
 from app.registry.models import Agent, AgentVersion, BLOCKED_REVIEW_STATUSES, Namespace
@@ -186,7 +186,7 @@ async def search_agents(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
     agent_repo = AgentRepository(session)
-    agents = await agent_repo.search(q=q, framework=framework, tags=tags, models=models)
+    agents = await agent_repo.search(q=q, framework=framework, tags=tags, models=models, include_all=user is not None)
     latest = await agent_repo.latest_visible_versions()
     visible: list[Agent] = []
     for agent in agents:
@@ -394,6 +394,7 @@ async def publish_version(
     archive_data: bytes,
     signature_raw: bytes,
     visibility: str = "public",
+    organization_slug: str | None = None,
 ) -> PublishResult:
     settings = get_settings()
     if visibility not in VISIBILITIES:
@@ -432,6 +433,22 @@ async def publish_version(
     await check_publish_quota(session, user)
     await _resolve_publish_namespace(session, user, namespace)
 
+    organization_id: int | None = None
+    if visibility == "internal":
+        from app.organizations.repositories import OrganizationRepository
+
+        if not organization_slug:
+            raise RegistryError("internal visibility requires an organizationSlug")
+        org = await OrganizationRepository(session).by_slug(organization_slug)
+        if org is None:
+            raise RegistryError(f"organization '{organization_slug}' not found")
+        member = await OrganizationRepository(session).membership(org, user.id)
+        if member is None or member.role not in ("owner", "administrator"):
+            raise RegistryError(
+                "you must be an owner or administrator of that organization to publish internally"
+            )
+        organization_id = org.id
+
     framework_raw = manifest.get("framework")
     framework = framework_raw.get("name") if isinstance(framework_raw, dict) else framework_raw
 
@@ -451,6 +468,8 @@ async def publish_version(
             models=list(manifest.get("models", {}).get("supported", [])),
             tags=list(manifest.get("tags", [])),
         )
+        if organization_id is not None:
+            agent_repo.bind_organization(agent, organization_id)
     else:
         agent_repo.update_metadata(
             agent,
@@ -461,6 +480,8 @@ async def publish_version(
             models=list(manifest.get("models", {}).get("supported", [])),
             tags=list(manifest.get("tags", [])),
         )
+        if organization_id is not None:
+            agent_repo.bind_organization(agent, organization_id)
 
     if await version_repo.by_agent_and_version(agent, version) is not None:
         raise VersionConflict(f"version {version} already published (re-publish with a new version)")
@@ -514,6 +535,7 @@ async def publish_version(
         target_id=ver.id,
         namespace=namespace,
         name=name,
+        organization_id=agent.organization_id,
         detail={"version": version, "sha256": ver.sha256, "visibility": visibility},
     )
     await bump_catalog(session)
@@ -588,10 +610,11 @@ async def review_version(
         actor_id=user.id,
         action="version.reviewed",
         target_type="agent_version",
-        target_id=ver.id,
-        namespace=namespace,
-        name=name,
-        detail={"namespace": namespace, "name": name, "version": version, "action": action, "status": status},
+target_id=ver.id,
+            namespace=namespace,
+            name=name,
+            organization_id=agent.organization_id,
+            detail={"namespace": namespace, "name": name, "version": version, "action": action, "status": status},
     )
     await bump_catalog(session)
     return {
@@ -681,7 +704,7 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
     ver = await _resolve_version(session, agent, version)
     if ver is None:
         raise VersionNotFound("version not found")
-    await _require_namespace_or_reviewer(session, user, namespace)
+    await _require_namespace_or_reviewer(session, user, namespace, owner_only=True)
     changed = VersionRepository(session).set_yanked(ver, yanked)
     if changed:
         await AuditRepository(session).record(
@@ -691,6 +714,7 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
             target_id=ver.id,
             namespace=namespace,
             name=name,
+            organization_id=agent.organization_id,
             detail={"namespace": namespace, "name": name, "version": version},
         )
         await bump_catalog(session)
@@ -711,7 +735,7 @@ async def set_package_visibility(
     agent = await agent_repo.by_namespace_name(namespace, name)
     if agent is None:
         raise AgentNotFound("agent not found")
-    if not await can_manage(session, agent, user):
+    if not await can_manage_access(session, agent, user):
         raise RegistryError("you are not authorized to manage this package")
 
     organization_id = None
@@ -765,7 +789,7 @@ async def list_package_grants(
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None:
         raise AgentNotFound("agent not found")
-    if not await can_manage(session, agent, user):
+    if not await can_manage_access(session, agent, user):
         raise RegistryError("you are not authorized to manage this package")
     grants = await GrantRepository(session).for_agent(agent)
     return [
@@ -795,9 +819,9 @@ async def grant_package_access(
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None:
         raise AgentNotFound("agent not found")
-    if agent.visibility == "public":
+    if agent.visibility != "private":
         raise RegistryError("grants are only meaningful for private packages")
-    if not await can_manage(session, agent, user):
+    if not await can_manage_access(session, agent, user):
         raise RegistryError("you are not authorized to manage this package")
 
     repo = GrantRepository(session)
@@ -841,7 +865,7 @@ async def revoke_package_access(
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None:
         raise AgentNotFound("agent not found")
-    if not await can_manage(session, agent, user):
+    if not await can_manage_access(session, agent, user):
         raise RegistryError("you are not authorized to manage this package")
     repo = GrantRepository(session)
     if username is not None:
@@ -869,10 +893,15 @@ async def revoke_package_access(
     return {"username": username, "teamId": team_id, "agent": f"{namespace}/{name}"}
 
 
-async def _require_namespace_or_reviewer(session: AsyncSession, user: User, namespace: str) -> None:
+async def _require_namespace_or_reviewer(session: AsyncSession, user: User, namespace: str, *, owner_only: bool = False) -> None:
     repo = NamespaceRepository(session)
     ns = await repo.by_name(namespace)
     member = await repo.is_member(ns, user.id) if ns is not None else None
+    if owner_only:
+        owns = member is not None and member.role == "owner"
+        if not owns and user.role not in ("reviewer", "admin"):
+            raise RegistryError("only a namespace owner or reviewer/admin can do that")
+        return
     if member is None and user.role not in ("reviewer", "admin"):
         raise RegistryError("you are not a member of this namespace")
 

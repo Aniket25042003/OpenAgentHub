@@ -39,6 +39,14 @@ class ArchiveStore:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, path.read_bytes)
 
+    async def size(self, namespace: str, name: str, version: str) -> int | None:
+        path = self._path(namespace, name, version)
+        if not path.exists():
+            return None
+        loop = asyncio.get_running_loop()
+        stat = await loop.run_in_executor(None, path.stat)
+        return stat.st_size
+
     async def delete(self, namespace: str, name: str, version: str) -> None:
         path = self._path(namespace, name, version)
         if path.exists():
