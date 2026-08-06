@@ -381,7 +381,11 @@ export function readLogTail(lines: number = 100): string {
     if (remaining <= 0) break;
     try {
       const text = readFileSync(file, "utf8");
-      const tail = text.split("\n").slice(-remaining);
+      const lines = text.split("\n");
+      if (lines.at(-1) === "") lines.pop();
+      const tail = lines.slice(-remaining);
+      chunks.push(tail.join("\n"));
+      remaining -= tail.length;
       chunks.push(tail.join("\n"));
       remaining -= tail.length;
     } catch {
