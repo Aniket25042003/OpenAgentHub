@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Integer, String
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base, JSONType, utcnow
@@ -11,6 +11,9 @@ class AuditEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     actor_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    organization_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    namespace: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     action: Mapped[str] = mapped_column(String(64), index=True)
     target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

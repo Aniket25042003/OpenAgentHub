@@ -3,13 +3,12 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.repositories import AuditRepository
 from app.config import get_settings
 from app.crypto import SignatureError, sha256_hex, verify_signature
-from app.entitlements.application import QuotaExceeded, check_publish_quota
+from app.entitlements.application import check_publish_quota
 from app.identity.models import SigningKey, User
 from app.identity.repositories import SigningKeyRepository, UserRepository
 from app.outbox.repositories import OutboxRepository
@@ -331,6 +330,9 @@ async def issue_download_url(
         action="package.download_url_issued",
         target_type="agent_version",
         target_id=ver.id,
+        organization_id=agent.organization_id,
+        namespace=namespace,
+        name=name,
         detail={"namespace": namespace, "name": name, "version": ver.version},
     )
     return {"url": url, "expiresInSeconds": settings.download_url_ttl_seconds, "version": ver.version}
@@ -491,7 +493,13 @@ async def publish_version(
         {"version_id": ver.id, "namespace": namespace, "name": name, "version": version, "sha256": ver.sha256},
     )
     await AuditRepository(session).record(
-        actor_id=user.id, action="version.published", target_type="agent_version", target_id=ver.id
+        actor_id=user.id,
+        action="version.published",
+        target_type="agent_version",
+        target_id=ver.id,
+        namespace=namespace,
+        name=name,
+        detail={"version": version, "sha256": ver.sha256, "visibility": visibility},
     )
     await bump_catalog(session)
     return PublishResult(security=security_status, findings=findings)
@@ -566,6 +574,8 @@ async def review_version(
         action="version.reviewed",
         target_type="agent_version",
         target_id=ver.id,
+        namespace=namespace,
+        name=name,
         detail={"namespace": namespace, "name": name, "version": version, "action": action, "status": status},
     )
     await bump_catalog(session)
@@ -664,6 +674,8 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
             action="version.yanked" if yanked else "version.unyanked",
             target_type="agent_version",
             target_id=ver.id,
+            namespace=namespace,
+            name=name,
             detail={"namespace": namespace, "name": name, "version": version},
         )
         await bump_catalog(session)
@@ -714,6 +726,9 @@ async def set_package_visibility(
             action="package.visibility_changed",
             target_type="agent",
             target_id=agent.id,
+            organization_id=organization_id,
+            namespace=namespace,
+            name=name,
             detail={"namespace": namespace, "name": name, "visibility": visibility},
         )
         await bump_catalog(session)
@@ -780,6 +795,9 @@ async def grant_package_access(
         action="package.access_granted",
         target_type="agent_grant",
         target_id=row.id,
+        organization_id=agent.organization_id,
+        namespace=namespace,
+        name=name,
         detail=detail,
     )
     return {"username": username, "teamId": team_id, "agent": f"{namespace}/{name}"}
@@ -819,6 +837,9 @@ async def revoke_package_access(
         action="package.access_revoked",
         target_type="agent_grant",
         target_id=grant.id,
+        organization_id=agent.organization_id,
+        namespace=namespace,
+        name=name,
         detail=detail,
     )
     return {"username": username, "teamId": team_id, "agent": f"{namespace}/{name}"}
@@ -830,3 +851,34 @@ async def _require_namespace_or_reviewer(session: AsyncSession, user: User, name
     member = await repo.is_member(ns, user.id) if ns is not None else None
     if member is None and user.role not in ("reviewer", "admin"):
         raise RegistryError("you are not a member of this namespace")
+
+
+async def get_package_audit_log(
+    session: AsyncSession,
+    user: User,
+    namespace: str,
+    name: str,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+    action: str | None = None,
+) -> dict:
+    """Audit trail scoped to a private package; viewers must be able to view it."""
+    from app.audit.repositories import AuditRepository
+
+    agent = await AgentRepository(session).by_namespace_name(namespace, name)
+    if agent is None:
+        raise AgentNotFound("agent not found")
+    if not await can_view(session, agent, user):
+        raise AgentNotFound("agent not found")
+    events = await AuditRepository(session).search(
+        namespace=namespace,
+        name=name,
+        limit=limit,
+        before_id=before_id,
+        action=action,
+    )
+    return {
+        "items": events,
+        "nextCursor": events[-1].id if len(events) == limit else None,
+    }

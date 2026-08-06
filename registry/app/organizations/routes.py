@@ -11,6 +11,8 @@ from app.organizations.application import (
 from app.ratelimit import RateLimitRule, enforce
 from app.schemas import (
     AcceptInviteRequest,
+    AuditEntry,
+    AuditLogResponse,
     InviteRequest,
     InviteResponse,
     OrgActionResponse,
@@ -367,3 +369,24 @@ async def delete_service_account(
         return OrgActionResponse(**result)
     except OrganizationError as exc:
         raise _map_errors(exc) from exc
+
+
+@router.get("/orgs/{slug}/audit-log", response_model=AuditLogResponse)
+async def org_audit_log(
+    slug: str,
+    limit: int = 50,
+    before_id: int | None = None,
+    action: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_cookie_active_user),
+):
+    try:
+        result = await application.get_org_audit_log(
+            session, user, slug, limit=min(limit, 200), before_id=before_id, action=action
+        )
+    except OrganizationError as exc:
+        raise _map_errors(exc) from exc
+    return AuditLogResponse(
+        items=[AuditEntry.from_event(e) for e in result["items"]],
+        nextCursor=result["nextCursor"],
+    )

@@ -78,6 +78,7 @@ async def create_organization(
         action="organization.created",
         target_type="organization",
         target_id=org.id,
+        organization_id=org.id,
         detail={"slug": slug},
     )
     return org
@@ -131,6 +132,7 @@ async def update_organization(
         action="organization.updated",
         target_type="organization",
         target_id=org.id,
+        organization_id=org.id,
         detail={"slug": slug},
     )
     return org
@@ -175,6 +177,7 @@ async def add_member(
         action="organization.member.added",
         target_type="organization_member",
         target_id=row.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username, "role": role},
     )
     return {"slug": slug, "username": username, "role": role}
@@ -212,6 +215,7 @@ async def change_member_role(
         action="organization.member.role_changed",
         target_type="organization_member",
         target_id=target_member.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username, "role": role},
     )
     return {"slug": slug, "username": username, "role": role}
@@ -245,6 +249,7 @@ async def remove_member(
         action="organization.member.removed",
         target_type="organization_member",
         target_id=target_member.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username},
     )
     return {"slug": slug, "username": username}
@@ -268,6 +273,7 @@ async def leave_organization(session: AsyncSession, user: User, slug: str) -> di
         action="organization.member.left",
         target_type="organization_member",
         target_id=member.id,
+        organization_id=org.id,
         detail={"slug": slug},
     )
     return {"slug": slug}
@@ -325,6 +331,7 @@ async def invite_member(
         action="organization.invitation.created",
         target_type="invitation",
         target_id=row.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username, "role": role},
     )
     return {
@@ -358,6 +365,7 @@ async def accept_invitation(session: AsyncSession, user: User, token: str) -> di
         action="organization.invitation.accepted",
         target_type="invitation",
         target_id=inv.id,
+        organization_id=org.id,
         detail={"slug": org.slug, "role": inv.role},
     )
     return {"slug": org.slug, "role": inv.role}
@@ -420,6 +428,7 @@ async def create_team(session: AsyncSession, user: User, slug: str, name: str) -
         action="organization.team.created",
         target_type="team",
         target_id=team.id,
+        organization_id=org.id,
         detail={"slug": slug, "name": team.name},
     )
     return {"id": team.id, "name": team.name}
@@ -454,6 +463,7 @@ async def add_team_member(
         action="organization.team.member.added",
         target_type="team_member",
         target_id=team.id,
+        organization_id=org.id,
         detail={"slug": slug, "team": team.name, "username": username},
     )
     return {"slug": slug, "team": team.name, "username": username}
@@ -485,6 +495,7 @@ async def remove_team_member(
         action="organization.team.member.removed",
         target_type="team_member",
         target_id=team.id,
+        organization_id=org.id,
         detail={"slug": slug, "team": team.name, "username": username},
     )
     return {"slug": slug, "team": team.name, "username": username}
@@ -526,6 +537,7 @@ async def create_service_account(
         action="organization.service_account.created",
         target_type="service_account",
         target_id=row.id,
+        organization_id=org.id,
         detail={"slug": slug, "name": row.name, "role": role},
     )
     return {"slug": slug, "name": row.name, "role": role, "id": row.id}
@@ -588,6 +600,40 @@ async def delete_service_account(
         action="organization.service_account.deleted",
         target_type="service_account",
         target_id=sa.id,
+        organization_id=org.id,
         detail={"slug": slug, "name": sa.name},
     )
     return {"slug": slug, "name": sa.name}
+
+
+AUDIT_ROLES = ("owner", "administrator", "maintainer")
+
+
+async def get_org_audit_log(
+    session: AsyncSession,
+    user: User,
+    slug: str,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+    action: str | None = None,
+) -> dict:
+    from app.audit.repositories import AuditRepository
+
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, user.id), org)
+    if member.role not in AUDIT_ROLES:
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role for audit access")
+    events = await AuditRepository(session).search(
+        organization_id=org.id,
+        limit=limit,
+        before_id=before_id,
+        action=action,
+    )
+    return {
+        "items": events,
+        "nextCursor": events[-1].id if len(events) == limit else None,
+    }

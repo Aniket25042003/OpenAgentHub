@@ -61,6 +61,7 @@ async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _ensure_latest_version_columns()
+    await _ensure_audit_columns()
 
 
 async def _ensure_latest_version_columns() -> None:
@@ -85,6 +86,24 @@ async def _ensure_latest_version_columns() -> None:
                 text("UPDATE agent_versions SET sort_key = :key WHERE id = :id"),
                 {"key": sort_key(version), "id": version_id},
             )
+
+
+async def _ensure_audit_columns() -> None:
+    """Add M-8.8 audit scoping columns (organization/package) on existing DBs."""
+    from sqlalchemy import text
+
+    async with _engine.begin() as conn:
+        for column, definition in (
+            ("organization_id", "INTEGER"),
+            ("namespace", "VARCHAR(64)"),
+            ("name", "VARCHAR(64)"),
+        ):
+            try:
+                await conn.execute(
+                    text(f"ALTER TABLE audit_events ADD COLUMN {column} {definition}")
+                )
+            except Exception:  # noqa: BLE001 — column already present
+                pass
 
 
 async def reset_db() -> None:

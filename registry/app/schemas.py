@@ -530,6 +530,40 @@ class ServiceAccountsResponse(BaseModel):
     items: list[ServiceAccountItem]
 
 
+class AuditEntry(BaseModel):
+    id: int
+    actorId: int | None = None
+    actorUsername: str | None = None
+    action: str
+    targetType: str | None = None
+    targetId: int | None = None
+    namespace: str | None = None
+    name: str | None = None
+    detail: dict[str, Any] = {}
+    createdAt: str
+
+    @classmethod
+    def from_event(cls, event) -> "AuditEntry":
+        return cls(
+            id=event.id,
+            actorId=event.actor_id,
+            action=event.action,
+            targetType=event.target_type,
+            targetId=event.target_id,
+            namespace=event.namespace,
+            name=event.name,
+            detail=event.detail or {},
+            createdAt=dt_iso(event.created_at),
+        )
+
+
+class AuditLogResponse(BaseModel):
+    items: list[AuditEntry]
+    nextCursor: int | None = None
+    retentionDays: int | None = None
+    oldestEventAt: str | None = None
+
+
 def dt_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         return dt.isoformat() + "Z"

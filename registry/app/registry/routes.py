@@ -41,6 +41,8 @@ from app.registry.application import (
 from app.schemas import (
     AgentSummary,
     AgentVersionDetail,
+    AuditEntry,
+    AuditLogResponse,
     CatalogResponse,
     GrantRequest,
     GrantResponse,
@@ -555,3 +557,25 @@ async def revoke_access(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     await session.commit()
     return GrantResponse(**result)
+
+
+@router.get("/agents/{namespace}/{name}/audit-log", response_model=AuditLogResponse)
+async def package_audit_log(
+    namespace: str,
+    name: str,
+    limit: int = 50,
+    before_id: int | None = None,
+    action: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_optional_user),
+):
+    try:
+        result = await application.get_package_audit_log(
+            session, user, namespace, name, limit=min(limit, 200), before_id=before_id, action=action
+        )
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return AuditLogResponse(
+        items=[AuditEntry.from_event(e) for e in result["items"]],
+        nextCursor=result["nextCursor"],
+    )
