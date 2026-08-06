@@ -120,6 +120,56 @@ describe("control-plane logs", () => {
     writeFileSync(logPath, "");
     assert.equal(m.readLogTail(10), "");
   });
+
+  it("tail honors the line budget across a trailing newline and truncation", () => {
+    const logPath = m.controlInfo().logPath;
+    for (const f of m.logFilenames()) rmSync(f, { force: true });
+    writeFileSync(logPath, "1\n2\n3\n4\n5\n");
+    assert.equal(m.readLogTail(3), "3\n4\n5");
+    writeFileSync(logPath, "1\n2\n3\n4\n5");
+    assert.equal(m.readLogTail(3), "3\n4\n5");
+  });
+
+  it("follow resets offset when the log is rotated to a larger file", () => {
+    const logPath = m.controlInfo().logPath;
+    writeFileSync(logPath, "a".repeat(200));
+    const initial = m.initLogFollow(logPath);
+    assert.equal(initial.offset, 200);
+    assert.equal(m.readLogFollow(logPath, initial).line, null);
+    rmSync(logPath, { force: true });
+    writeFileSync(logPath, "b".repeat(400));
+    const rotated = m.readLogFollow(logPath, initial);
+    assert.equal(rotated.line, "b".repeat(400));
+    assert.equal(rotated.next.offset, 400);
+    assert.notEqual(rotated.next.identity, initial.identity);
+  });
+
+  it("follow reads appended bytes and honors the read budget", () => {
+    const logPath = m.controlInfo().logPath;
+    writeFileSync(logPath, "a".repeat(100));
+    const initial = m.initLogFollow(logPath);
+    writeFileSync(logPath, "a".repeat(100) + "b".repeat(30));
+    const appended = m.readLogFollow(logPath, initial);
+    assert.equal(appended.line, "b".repeat(30));
+    assert.equal(appended.next.offset, 130);
+  });
+});
+
+describe("control-plane readiness and ports", () => {
+  it("waitForReadyState returns null on timeout while still starting", async () => {
+    m.clearState();
+    m.writeState({ pid: 123, startIdentity: "s", port: 31996, productVersion: "0.1.0", protocolVersion: 1, startedAt: "now", health: "starting" as const });
+    assert.equal(await m.waitForReadyState(150), null);
+    m.writeState({ pid: 123, startIdentity: "s", port: 31996, productVersion: "0.1.0", protocolVersion: 1, startedAt: "now", health: "stopped" as const });
+    assert.equal(await m.waitForReadyState(150), null);
+    m.writeState({ pid: 123, startIdentity: "s", port: 31996, productVersion: "0.1.0", protocolVersion: 1, startedAt: "now", health: "ready" as const });
+    assert.equal((await m.waitForReadyState(1500))?.health, "ready");
+  });
+
+  it("accepts ports in 1..65535 only", () => {
+    for (const bad of [0, -1, 65536, 1.5, NaN, Infinity]) assert.equal(m.validPort(bad), false);
+    for (const good of [1, 1024, 65535]) assert.equal(m.validPort(good), true);
+  });
 });
 
 describe("control-plane daemon integration", () => {

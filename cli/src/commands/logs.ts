@@ -38,8 +38,8 @@ export default class Logs extends Command {
         const fd = openSync(logPath, "r");
         try {
           const buf = Buffer.alloc(current - size);
-          readSync(fd, buf, 0, buf.length, size);
-          process.stdout.write(buf.toString());
+          const bytesRead = readSync(fd, buf, 0, buf.length, size);
+          process.stdout.write(buf.subarray(0, bytesRead).toString());
         } finally {
           closeSync(fd);
         }
