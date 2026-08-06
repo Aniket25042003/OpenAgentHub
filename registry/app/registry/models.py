@@ -41,6 +41,10 @@ class Agent(Base):
     namespace: Mapped[str] = mapped_column(String(64), index=True)
     name: Mapped[str] = mapped_column(String(64), index=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    visibility: Mapped[str] = mapped_column(String(16), default="public", index=True)
+    organization_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     author: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
     license: Mapped[str] = mapped_column(String(64), default="")
@@ -53,6 +57,32 @@ class Agent(Base):
     versions: Mapped[list["AgentVersion"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan", order_by="AgentVersion.published_at.desc()"
     )
+    grants: Mapped[list["AgentGrant"]] = relationship(
+        back_populates="agent", cascade="all, delete-orphan"
+    )
+
+
+class AgentGrant(Base):
+    """Explicit per-agent grant for `private` visibility (user or team with access)."""
+
+    __tablename__ = "agent_grants"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "user_id", name="uq_agent_grant_user"),
+        UniqueConstraint("agent_id", "team_id", name="uq_agent_grant_team"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    granted_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    agent: Mapped[Agent] = relationship(back_populates="grants")
 
 
 class AgentVersion(Base):

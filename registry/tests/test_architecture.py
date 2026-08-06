@@ -108,6 +108,12 @@ def test_openapi_exposes_all_router_paths():
         "/api/v1/me/packages",
         "/api/v1/me/activity",
         "/api/v1/admin/review-queue",
+        "/api/v1/orgs",
+        "/api/v1/orgs/{slug}",
+        "/api/v1/orgs/{slug}/members",
+        "/api/v1/orgs/{slug}/invitations",
+        "/api/v1/orgs/invitations/accept",
+        "/api/v1/orgs/{slug}/teams",
         "/health",
         "/ready",
         "/metrics",
@@ -118,9 +124,10 @@ def test_openapi_exposes_all_router_paths():
 def test_module_tables_are_owned_by_their_module():
     ownership = {
         "identity": ("users", "signing_keys"),
-        "registry": ("agents", "agent_versions", "namespaces", "namespace_members", "version_review_events"),
+        "registry": ("agents", "agent_versions", "namespaces", "namespace_members", "version_review_events", "agent_grants"),
         "audit": ("audit_events",),
         "outbox": ("outbox_events", "queue_jobs"),
+        "organizations": ("organizations", "organization_members", "teams", "team_members", "invitations"),
     }
     for module, tables in ownership.items():
         models_path = APP_ROOT / module / "models.py"
@@ -131,7 +138,9 @@ def test_module_tables_are_owned_by_their_module():
 
 ALLOWED_CROSS_MODULE = {
     "security_review/adapters.py": {"registry"},
-    "registry/application.py": {"security_review", "audit", "outbox", "identity", "entitlements"},
+    "registry/access.py": {"organizations", "identity"},
+    "registry/application.py": {"security_review", "audit", "outbox", "identity", "entitlements", "organizations"},
+    "registry/repositories.py": {"organizations"},
     "registry/routes.py": {"identity", "entitlements"},
     "registry/catalog.py": {"registry", "identity"},
     "publisher/application.py": {"registry", "identity", "audit"},
@@ -139,6 +148,8 @@ ALLOWED_CROSS_MODULE = {
     "entitlements/application.py": {"audit", "identity"},
     "identity/application.py": {"audit"},
     "identity/sessions.py": {"audit"},
+    "organizations/application.py": {"audit", "identity"},
+    "organizations/routes.py": {"identity"},
     "db.py": {"registry"},
     "workers/scan.py": {"security_review", "outbox"},
     "workers/notifications.py": {"outbox"},

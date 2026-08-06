@@ -4,7 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="REGISTRY_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="REGISTRY_", env_file=".env", extra="ignore"
+    )
 
     database_url: str = "sqlite+aiosqlite:///./registry.db"
     storage_dir: str = "./storage"
@@ -32,6 +34,9 @@ class Settings(BaseSettings):
     current_privacy_version: int = 1
     current_publisher_agreement_version: int = 1
 
+    invitation_ttl_hours: int = 72
+    invitation_max_pending_per_org: int = 100
+
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = "*"
     max_archive_bytes: int = 250 * 1024 * 1024
@@ -40,7 +45,9 @@ class Settings(BaseSettings):
     publish_quota_new_account_daily: int = 10
     publish_quota_new_account_days: int = 7
     publish_per_ip_per_hour: int = 120
-    reserved_namespace_prefixes: str = "openagenthub-,oah-,github-,google-,microsoft-,meta-,anthropic-,openai-"
+    reserved_namespace_prefixes: str = (
+        "openagenthub-,oah-,github-,google-,microsoft-,meta-,anthropic-,openai-"
+    )
     outbox_poll_interval_seconds: float = 1.0
     rescan_cooldown_seconds: float = 10.0
 
@@ -52,6 +59,7 @@ class Settings(BaseSettings):
     account_writes_per_hour: int = 600
     downloads_per_minute_by_ip: int = 8
     download_bytes_per_hour_by_ip: int = 2 * 1024 * 1024 * 1024
+    download_url_ttl_seconds: int = 300
     download_flush_seconds: float = 60.0
     catalog_cache_ttl_seconds: int = 30
 

@@ -2,7 +2,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, aliased
 
-from app.registry.models import BLOCKED_REVIEW_STATUSES, Agent, AgentVersion, CatalogMeta, Namespace, NamespaceMember, VersionReviewEvent
+from app.registry.models import (
+    BLOCKED_REVIEW_STATUSES,
+    Agent,
+    AgentGrant,
+    AgentVersion,
+    CatalogMeta,
+    Namespace,
+    NamespaceMember,
+    VersionReviewEvent,
+)
 from app.registry.semver import semver_key, sort_key
 
 
@@ -48,10 +57,22 @@ class AgentRepository:
             await self.session.execute(select(Agent).where(Agent.namespace == namespace, Agent.name == name))
         ).scalar_one_or_none()
 
+    async def by_id(self, agent_id: int) -> Agent | None:
+        return await self.session.get(Agent, agent_id)
+
     async def all_in_namespace(self, namespace: str) -> list[Agent]:
         return (
             await self.session.execute(select(Agent).where(Agent.namespace == namespace).order_by(Agent.name))
         ).scalars().all()
+
+    def set_visibility(self, agent: Agent, visibility: str) -> bool:
+        if agent.visibility == visibility:
+            return False
+        agent.visibility = visibility
+        return True
+
+    def bind_organization(self, agent: Agent, organization_id: int | None) -> None:
+        agent.organization_id = organization_id
 
     async def create(
         self,
@@ -65,11 +86,13 @@ class AgentRepository:
         framework: str | None,
         models: list[str],
         tags: list[str],
+        visibility: str = "public",
     ) -> Agent:
         agent = Agent(
             namespace=namespace,
             name=name,
             owner_id=owner_id,
+            visibility=visibility,
             author=author,
             description=description,
             license=license,
@@ -89,8 +112,21 @@ class AgentRepository:
         agent.models = models
         agent.tags = tags
 
-    async def search(self, *, q: str | None, framework: str | None, tags: str | None, models: str | None) -> list[Agent]:
-        stmt = select(Agent)
+    async def search(
+        self,
+        *,
+        q: str | None,
+        framework: str | None,
+        tags: str | None,
+        models: str | None,
+        include_internal: bool = False,
+        include_all: bool = False,
+    ) -> list[Agent]:
+        stmt = select(Agent).where(Agent.visibility == "public")
+        if include_internal:
+            stmt = select(Agent).where(Agent.visibility.in_(("public", "internal")))
+        if include_all:
+            stmt = select(Agent).where(Agent.visibility.in_(("public", "internal", "private")))
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(
@@ -297,3 +333,56 @@ class VersionRepository:
         self.session.add(event)
         await self.session.flush()
         return event
+
+
+class GrantRepository:
+    """Per-agent access grants for ``private`` visibility (direct users or teams)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def for_agent(self, agent: Agent) -> list[AgentGrant]:
+        return (
+            await self.session.execute(
+                select(AgentGrant)
+                .where(AgentGrant.agent_id == agent.id)
+                .order_by(AgentGrant.created_at.desc())
+            )
+        ).scalars().all()
+
+    async def user_grant(self, agent: Agent, user_id: int) -> AgentGrant | None:
+        return (
+            await self.session.execute(
+                select(AgentGrant).where(AgentGrant.agent_id == agent.id, AgentGrant.user_id == user_id)
+            )
+        ).scalar_one_or_none()
+
+    async def team_grant(self, agent: Agent, team_id: int) -> AgentGrant | None:
+        return (
+            await self.session.execute(
+                select(AgentGrant).where(AgentGrant.agent_id == agent.id, AgentGrant.team_id == team_id)
+            )
+        ).scalar_one_or_none()
+
+    async def grant_user(self, agent: Agent, user_id: int, granted_by_id: int) -> AgentGrant:
+        row = AgentGrant(agent_id=agent.id, user_id=user_id, granted_by_id=granted_by_id)
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def grant_team(self, agent: Agent, team_id: int, granted_by_id: int) -> AgentGrant:
+        row = AgentGrant(agent_id=agent.id, team_id=team_id, granted_by_id=granted_by_id)
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def revoke_grant(self, grant: AgentGrant) -> None:
+        await self.session.delete(grant)
+
+    async def team_ids_for_user(self, user_id: int) -> set[int]:
+        from app.organizations.models import TeamMember
+
+        rows = (
+            await self.session.execute(select(TeamMember.team_id).where(TeamMember.user_id == user_id))
+        ).scalars().all()
+        return set(rows)

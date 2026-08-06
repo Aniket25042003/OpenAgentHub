@@ -231,6 +231,22 @@ class MaintainerAddRequest(BaseModel):
     role: str = "maintainer"
 
 
+class VisibilityUpdateRequest(BaseModel):
+    visibility: str
+    organizationSlug: str | None = None
+
+
+class GrantRequest(BaseModel):
+    username: str | None = None
+    teamId: int | None = None
+
+
+class GrantResponse(BaseModel):
+    username: str | None = None
+    teamId: int | None = None
+    agent: str
+
+
 class SuspendRequest(BaseModel):
     suspended: bool
 
@@ -362,6 +378,102 @@ class ReviewQueueItem(BaseModel):
 
 class ReviewQueueResponse(BaseModel):
     items: list[ReviewQueueItem]
+
+
+class OrgInfo(BaseModel):
+    slug: str
+    displayName: str
+    status: str
+    role: str
+
+
+class OrganizationDetail(BaseModel):
+    slug: str
+    displayName: str
+    status: str
+    myRole: str
+    memberCount: int
+
+
+class OrgCreateRequest(BaseModel):
+    slug: str
+    displayName: str
+
+
+class OrgUpdateRequest(BaseModel):
+    displayName: str | None = None
+
+
+class OrgMemberRequest(BaseModel):
+    username: str
+    role: str
+
+
+class OrgRoleRequest(BaseModel):
+    role: str
+
+
+class OrgMemberItem(BaseModel):
+    username: str
+    role: str
+
+
+class OrgMembersResponse(BaseModel):
+    items: list[OrgMemberItem]
+
+
+class OrgInvitationItem(BaseModel):
+    id: int
+    username: str
+    role: str
+    expiresAt: str
+    accepted: bool
+
+
+class OrgInvitationsResponse(BaseModel):
+    items: list[OrgInvitationItem]
+
+
+class OrgTeamItem(BaseModel):
+    id: int
+    name: str
+    memberCount: int
+
+
+class OrgTeamsResponse(BaseModel):
+    items: list[OrgTeamItem]
+
+
+class InviteRequest(BaseModel):
+    username: str
+    role: str
+
+
+class TeamCreateRequest(BaseModel):
+    name: str
+
+
+class TeamMemberRequest(BaseModel):
+    username: str
+
+
+class InviteResponse(BaseModel):
+    slug: str
+    username: str
+    role: str
+    token: str
+    expiresInHours: int
+
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+
+
+class OrgActionResponse(BaseModel):
+    slug: str
+    username: str | None = None
+    role: str | None = None
+    team: str | None = None
 
 
 def dt_iso(dt: datetime) -> str:

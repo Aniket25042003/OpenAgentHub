@@ -4,7 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
-from app.identity.models import LoginTransaction, Session, SigningKey, User, UserAgreement
+from app.identity.models import (
+    LoginTransaction,
+    Session,
+    SigningKey,
+    User,
+    UserAgreement,
+)
 
 
 class UserRepository:
@@ -24,7 +30,18 @@ class UserRepository:
             await self.session.execute(select(User).where(User.username == username))
         ).scalar_one_or_none()
 
-    async def create(self, *, username: str, github_id: str, avatar_url: str | None) -> User:
+    async def by_ids(self, user_ids: list[int]) -> list[User]:
+        if not user_ids:
+            return []
+        return (
+            (await self.session.execute(select(User).where(User.id.in_(user_ids))))
+            .scalars()
+            .all()
+        )
+
+    async def create(
+        self, *, username: str, github_id: str, avatar_url: str | None
+    ) -> User:
         user = User(username=username, github_id=github_id, avatar_url=avatar_url)
         self.session.add(user)
         return user
@@ -39,7 +56,9 @@ class SigningKeyRepository:
 
     async def by_fingerprint(self, fingerprint: str) -> SigningKey | None:
         return (
-            await self.session.execute(select(SigningKey).where(SigningKey.fingerprint == fingerprint))
+            await self.session.execute(
+                select(SigningKey).where(SigningKey.fingerprint == fingerprint)
+            )
         ).scalar_one_or_none()
 
     async def by_id(self, key_id: int) -> SigningKey | None:
@@ -47,11 +66,23 @@ class SigningKeyRepository:
 
     async def for_user(self, user_id: int) -> list[SigningKey]:
         return (
-            await self.session.execute(select(SigningKey).where(SigningKey.user_id == user_id))
-        ).scalars().all()
+            (
+                await self.session.execute(
+                    select(SigningKey).where(SigningKey.user_id == user_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     async def add(
-        self, *, user_id: int, public_key_pem: str, fingerprint: str, label: str | None, expires_at=None
+        self,
+        *,
+        user_id: int,
+        public_key_pem: str,
+        fingerprint: str,
+        label: str | None,
+        expires_at=None,
     ) -> SigningKey:
         key = SigningKey(
             user_id=user_id,
@@ -98,7 +129,9 @@ class SessionRepository:
 
     async def by_token_hash(self, token_hash: str) -> Session | None:
         return (
-            await self.session.execute(select(Session).where(Session.token_hash == token_hash))
+            await self.session.execute(
+                select(Session).where(Session.token_hash == token_hash)
+            )
         ).scalar_one_or_none()
 
     async def by_id(self, session_id: int) -> Session | None:
@@ -106,15 +139,27 @@ class SessionRepository:
 
     async def for_user(self, user_id: int) -> list[Session]:
         return (
-            await self.session.execute(
-                select(Session).where(Session.user_id == user_id).order_by(Session.created_at.desc())
+            (
+                await self.session.execute(
+                    select(Session)
+                    .where(Session.user_id == user_id)
+                    .order_by(Session.created_at.desc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     async def revoke_all_for_user(self, user_id: int) -> None:
         rows = (
-            await self.session.execute(select(Session).where(Session.user_id == user_id))
-        ).scalars().all()
+            (
+                await self.session.execute(
+                    select(Session).where(Session.user_id == user_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
         for row in rows:
             if row.revoked_at is None:
                 row.revoked_at = utcnow()
@@ -131,12 +176,15 @@ class UserAgreementRepository:
         existing = (
             await self.session.execute(
                 select(UserAgreement).where(
-                    UserAgreement.user_id == user_id, UserAgreement.term_name == term_name
+                    UserAgreement.user_id == user_id,
+                    UserAgreement.term_name == term_name,
                 )
             )
         ).scalar_one_or_none()
         if existing is None:
-            self.session.add(UserAgreement(user_id=user_id, term_name=term_name, version=version))
+            self.session.add(
+                UserAgreement(user_id=user_id, term_name=term_name, version=version)
+            )
         else:
             existing.version = max(existing.version, version)
             existing.accepted_at = utcnow()
@@ -174,16 +222,22 @@ class LoginTransactionRepository:
         await self.session.flush()
         return row
 
-    async def by_device_code_hash(self, device_code_hash: str) -> LoginTransaction | None:
+    async def by_device_code_hash(
+        self, device_code_hash: str
+    ) -> LoginTransaction | None:
         return (
             await self.session.execute(
-                select(LoginTransaction).where(LoginTransaction.device_code_hash == device_code_hash)
+                select(LoginTransaction).where(
+                    LoginTransaction.device_code_hash == device_code_hash
+                )
             )
         ).scalar_one_or_none()
 
     async def by_user_code(self, user_code: str) -> LoginTransaction | None:
         return (
-            await self.session.execute(select(LoginTransaction).where(LoginTransaction.user_code == user_code))
+            await self.session.execute(
+                select(LoginTransaction).where(LoginTransaction.user_code == user_code)
+            )
         ).scalar_one_or_none()
 
     async def mark_issued(self, row: LoginTransaction) -> None:
