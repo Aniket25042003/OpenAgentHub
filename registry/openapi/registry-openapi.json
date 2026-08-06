@@ -2938,6 +2938,22 @@
               "title": "Version",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "dl",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dl"
+            }
           }
         ],
         "responses": {
@@ -2961,6 +2977,66 @@
           }
         },
         "summary": "Download Archive"
+      }
+    },
+    "/api/v1/agents/{namespace}/{name}/versions/{version}/download-url": {
+      "post": {
+        "operationId": "issue_download_url_api_v1_agents__namespace___name__versions__version__download_url_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Issue Download Url"
       }
     },
     "/api/v1/agents/{namespace}/{name}/versions/{version}/scan": {

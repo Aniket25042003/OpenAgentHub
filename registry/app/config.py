@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     account_writes_per_hour: int = 600
     downloads_per_minute_by_ip: int = 8
     download_bytes_per_hour_by_ip: int = 2 * 1024 * 1024 * 1024
+    download_url_ttl_seconds: int = 300
     download_flush_seconds: float = 60.0
     catalog_cache_ttl_seconds: int = 30
 

@@ -238,13 +238,19 @@ async def download_archive(
     name: str,
     version: str,
     request: Request,
+    dl: str | None = None,
     session: AsyncSession = Depends(get_session),
     user=Depends(resolve_optional_user),
 ):
     settings = get_settings()
     enforce(request, ip_rule=RateLimitRule(settings.downloads_per_minute_by_ip, 60), bucket="dl")
     try:
-        data, version_id = await application.download_archive(session, namespace, name, version, user)
+        if dl is not None:
+            data, version_id = await application.download_archive_via_token(
+                session, namespace, name, version, dl
+            )
+        else:
+            data, version_id = await application.download_archive(session, namespace, name, version, user)
     except AgentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except VersionNotFound as exc:
@@ -254,7 +260,40 @@ async def download_archive(
     except ArchiveMissing as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     get_download_buffer().record(version_id)
-    return Response(content=data, media_type="application/octet-stream", headers={"X-Content-Type-Options": "nosniff"})
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+            "Accept-Ranges": "bytes",
+        },
+    )
+
+
+@router.post("/agents/{namespace}/{name}/versions/{version}/download-url")
+async def issue_download_url(
+    namespace: str,
+    name: str,
+    version: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(require_active_user),
+):
+    settings = get_settings()
+    enforce(request, ip_rule=RateLimitRule(settings.downloads_per_minute_by_ip, 60), bucket="dl")
+    try:
+        result = await application.issue_download_url(session, namespace, name, version, user, str(request.base_url))
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except VersionNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except VersionBlocked as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except application.DownloadUrlError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    await session.commit()
+    return result
 
 
 @router.get("/revocations", response_model=RevocationFeedResponse)

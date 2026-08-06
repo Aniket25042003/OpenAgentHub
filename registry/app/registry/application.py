@@ -26,6 +26,7 @@ from app.registry.repositories import (
     NamespaceRepository,
     VersionRepository,
 )
+from app.registry.signed_urls import issue_download_token, verify_download_token
 from app.schemas import AgentSummary, AgentVersionDetail, RevocationItem, SignatureFile, SecurityReport, SignerKeyInfo, dt_iso
 from app.security_review.adapters import RegistryScanStore
 from app.security_review.application import ScanTarget, run_scan
@@ -263,6 +264,76 @@ async def download_archive(
     if data is None:
         raise ArchiveMissing("archive missing on server")
     return data, ver.id
+
+
+async def download_archive_via_token(
+    session: AsyncSession, namespace: str, name: str, version: str, token: str
+) -> tuple[bytes, int]:
+    agent = await AgentRepository(session).by_namespace_name(namespace, name)
+    if agent is None:
+        raise AgentNotFound("agent not found")
+    ver = await _resolve_version(session, agent, version)
+    if ver is None:
+        raise VersionNotFound("version not found")
+    ok, _ = verify_download_token(
+        token,
+        namespace=namespace,
+        name=name,
+        version=ver.version,
+        digest=ver.sha256,
+        version_id=ver.id,
+    )
+    if not ok:
+        raise AgentNotFound("agent not found")
+    blocked = _blocked_download_reason(ver)
+    if blocked is not None:
+        raise VersionBlocked(blocked)
+    data = await ArchiveStore().get(namespace, name, ver.version)
+    if data is None:
+        raise ArchiveMissing("archive missing on server")
+    return data, ver.id
+
+
+class DownloadUrlError(ValueError):
+    pass
+
+
+async def issue_download_url(
+    session: AsyncSession, namespace: str, name: str, version: str, user: User | None, base_url: str
+) -> dict:
+    if user is None:
+        raise DownloadUrlError("authentication required to issue a download URL")
+    agent = await AgentRepository(session).by_namespace_name(namespace, name)
+    if agent is None or not await can_view(session, agent, user):
+        raise AgentNotFound("agent not found")
+    ver = await _resolve_version(session, agent, version)
+    if ver is None:
+        raise VersionNotFound("version not found")
+    blocked = _blocked_download_reason(ver)
+    if blocked is not None:
+        raise VersionBlocked(blocked)
+
+    settings = get_settings()
+    token = issue_download_token(
+        namespace=namespace,
+        name=name,
+        version=ver.version,
+        version_id=ver.id,
+        digest=ver.sha256,
+        ttl_seconds=settings.download_url_ttl_seconds,
+    )
+    url = (
+        f"{base_url.rstrip('/')}/api/v1/agents/{namespace}/{name}"
+        f"/versions/{ver.version}/archive?dl={token}"
+    )
+    await AuditRepository(session).record(
+        actor_id=user.id,
+        action="package.download_url_issued",
+        target_type="agent_version",
+        target_id=ver.id,
+        detail={"namespace": namespace, "name": name, "version": ver.version},
+    )
+    return {"url": url, "expiresInSeconds": settings.download_url_ttl_seconds, "version": ver.version}
 
 
 def _is_reserved_namespace(name: str) -> bool:

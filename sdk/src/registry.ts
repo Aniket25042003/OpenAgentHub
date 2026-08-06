@@ -312,6 +312,14 @@ export class RegistryClient {
     return data.versions;
   }
 
+  async getDownloadUrl(namespace: string, name: string, version: string): Promise<{ url: string; expiresInSeconds: number; version: string }> {
+    const res = await this.request(
+      `/api/v1/agents/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/download-url`,
+      { method: "POST" },
+    );
+    return (await res.json()) as { url: string; expiresInSeconds: number; version: string };
+  }
+
   async downloadArchive(namespace: string, name: string, version: string): Promise<{ buffer: Buffer; sha256: string; signature: SignatureFile }> {
     const detail = await this.getVersion(namespace, name, version);
     if (!detail.signature) throw new RegistryError("version has no published signature", 409);
@@ -319,10 +327,14 @@ export class RegistryClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 60_000);
     try {
-      const res = await fetch(
-        `${this.baseUrl}/api/v1/agents/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/archive`,
-        { signal: controller.signal, headers: { Accept: "application/octet-stream" } },
-      );
+      let url = `${this.baseUrl}/api/v1/agents/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/archive`;
+      let headers: Record<string, string> = { Accept: "application/octet-stream" };
+      if (this.token) {
+        const { url: signed } = await this.getDownloadUrl(namespace, name, version);
+        url = signed;
+        headers = {};
+      }
+      const res = await fetch(url, { signal: controller.signal, headers });
       if (!res.ok) throw new RegistryError(`download failed: ${res.status}`, res.status);
       if (!res.body) throw new RegistryError("empty download", 500);
       const reader = res.body.getReader();
