@@ -18,7 +18,6 @@ from sqlalchemy.orm import aliased
 
 from app.registry.models import BLOCKED_REVIEW_STATUSES, Agent, AgentVersion
 from app.schemas import CatalogItem
-
 PAGE_SIZE = 100
 PYTHON_FILTER_PAGE_GUARD = 20
 
@@ -160,7 +159,7 @@ async def load_catalog_page(
     latest, sub, top_rank = _ranked_visible()
     stmt = select(Agent, latest).where(Agent.id == latest.agent_id, top_rank)
 
-    conditions = []
+    conditions = [Agent.visibility == "public"]
     if q:
         like = f"%{q.lower()}%"
         conditions.append(

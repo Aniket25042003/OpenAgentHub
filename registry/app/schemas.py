@@ -232,6 +232,22 @@ class MaintainerAddRequest(BaseModel):
     role: str = "maintainer"
 
 
+class VisibilityUpdateRequest(BaseModel):
+    visibility: str
+    organizationSlug: str | None = None
+
+
+class GrantRequest(BaseModel):
+    username: str | None = None
+    teamId: int | None = None
+
+
+class GrantResponse(BaseModel):
+    username: str | None = None
+    teamId: int | None = None
+    agent: str
+
+
 class SuspendRequest(BaseModel):
     suspended: bool
 

@@ -12,6 +12,7 @@ from app.entitlements.application import QuotaExceeded, check_publish_rate
 from app.identity.application import (
     require_active_user,
     resolve_cookie_reviewer_or_admin,
+    resolve_optional_user,
 )
 from app.registry import application
 from app.registry.catalog import CatalogQueryError, load_catalog_page
@@ -40,12 +41,15 @@ from app.schemas import (
     AgentSummary,
     AgentVersionDetail,
     CatalogResponse,
+    GrantRequest,
+    GrantResponse,
     MaintainerAddRequest,
     NamespaceClaimRequest,
     ReviewRequest,
     RevocationFeedResponse,
     SearchResponse,
     VersionsResponse,
+    VisibilityUpdateRequest,
     YankRequest,
 )
 
@@ -158,42 +162,70 @@ async def search_agents(
     limit: int = 50,
     offset: int = 0,
     session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_optional_user),
 ):
     settings = get_settings()
     enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     items = await application.search_agents(
-        session, q=q, framework=framework, tags=tags, models=models, sort=sort, limit=limit, offset=offset
+        session,
+        q=q,
+        framework=framework,
+        tags=tags,
+        models=models,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+        user=user,
     )
     return SearchResponse(items=items)
 
 
 @router.get("/agents/{namespace}/{name}", response_model=AgentSummary)
-async def get_agent(namespace: str, name: str, request: Request, session: AsyncSession = Depends(get_session)):
+async def get_agent(
+    namespace: str,
+    name: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_optional_user),
+):
     settings = get_settings()
     enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     try:
-        return await application.get_agent_summary(session, namespace, name)
+        return await application.get_agent_summary(session, namespace, name, user)
     except AgentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/agents/{namespace}/{name}/versions", response_model=VersionsResponse)
-async def list_versions(namespace: str, name: str, request: Request, session: AsyncSession = Depends(get_session)):
+async def list_versions(
+    namespace: str,
+    name: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_optional_user),
+):
     settings = get_settings()
     enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     try:
-        versions = await application.list_versions(session, namespace, name)
+        versions = await application.list_versions(session, namespace, name, user)
     except AgentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return VersionsResponse(versions=versions)
 
 
 @router.get("/agents/{namespace}/{name}/versions/{version}", response_model=AgentVersionDetail)
-async def get_version(namespace: str, name: str, version: str, request: Request, session: AsyncSession = Depends(get_session)):
+async def get_version(
+    namespace: str,
+    name: str,
+    version: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_optional_user),
+):
     settings = get_settings()
     enforce(request, ip_rule=RateLimitRule(settings.anonymous_reads_per_minute, 60))
     try:
-        return await application.get_version_detail(session, namespace, name, version)
+        return await application.get_version_detail(session, namespace, name, version, user)
     except AgentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except VersionNotFound as exc:
@@ -201,11 +233,18 @@ async def get_version(namespace: str, name: str, version: str, request: Request,
 
 
 @router.get("/agents/{namespace}/{name}/versions/{version}/archive")
-async def download_archive(namespace: str, name: str, version: str, request: Request, session: AsyncSession = Depends(get_session)):
+async def download_archive(
+    namespace: str,
+    name: str,
+    version: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_optional_user),
+):
     settings = get_settings()
     enforce(request, ip_rule=RateLimitRule(settings.downloads_per_minute_by_ip, 60), bucket="dl")
     try:
-        data, version_id = await application.download_archive(session, namespace, name, version)
+        data, version_id = await application.download_archive(session, namespace, name, version, user)
     except AgentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except VersionNotFound as exc:
@@ -232,6 +271,7 @@ async def publish_version(
     archive: UploadFile,
     signature: UploadFile,
     request: Request,
+    visibility: str = "public",
     session: AsyncSession = Depends(get_session),
     user = Depends(require_active_user),
 ):
@@ -255,6 +295,7 @@ async def publish_version(
             version=version,
             archive_data=archive_data,
             signature_raw=signature_raw,
+            visibility=visibility,
         )
     except ArchiveTooLarge as exc:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)) from exc
@@ -393,3 +434,84 @@ async def yank_version(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     await session.commit()
     return {"ok": True, "yanked": req.yanked, "changed": changed}
+
+
+@router.patch("/agents/{namespace}/{name}/visibility")
+async def update_visibility(
+    namespace: str,
+    name: str,
+    req: VisibilityUpdateRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_active_user),
+):
+    _write_limits(request, user)
+    try:
+        result = await application.set_package_visibility(
+            session, user, namespace, name, req.visibility, req.organizationSlug
+        )
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RegistryError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await session.commit()
+    return {"ok": True, **result}
+
+
+@router.get("/agents/{namespace}/{name}/grants")
+async def list_grants(
+    namespace: str,
+    name: str,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_active_user),
+):
+    try:
+        return await application.list_package_grants(session, user, namespace, name)
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RegistryError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/agents/{namespace}/{name}/grants", response_model=GrantResponse)
+async def grant_access(
+    namespace: str,
+    name: str,
+    req: GrantRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_active_user),
+):
+    _write_limits(request, user)
+    try:
+        result = await application.grant_package_access(
+            session, user, namespace, name, username=req.username, team_id=req.teamId
+        )
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RegistryError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await session.commit()
+    return GrantResponse(**result)
+
+
+@router.delete("/agents/{namespace}/{name}/grants", response_model=GrantResponse)
+async def revoke_access(
+    namespace: str,
+    name: str,
+    req: GrantRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user = Depends(require_active_user),
+):
+    _write_limits(request, user)
+    try:
+        result = await application.revoke_package_access(
+            session, user, namespace, name, username=req.username, team_id=req.teamId
+        )
+    except AgentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RegistryError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await session.commit()
+    return GrantResponse(**result)

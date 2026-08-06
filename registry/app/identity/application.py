@@ -127,6 +127,25 @@ async def resolve_cookie_active_user(
     return user
 
 
+async def resolve_optional_user(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> User | None:
+    """Resolve the logged-in user (cookie or bearer) without requiring one."""
+    token = request.cookies.get(get_settings().session_cookie_name)
+    if token:
+        from app.identity.sessions import session_user
+
+        try:
+            user, _ = await session_user(session, token, rotate=False)
+            return user
+        except HTTPException:
+            return None
+    bearer = request.headers.get("authorization", "")
+    if bearer.startswith("Bearer "):
+        return await _user_from_bearer(bearer.removeprefix("Bearer ").strip(), session)
+    return None
+
+
 def resolve_cookie_role(*roles: str):
     async def _check(
         request: Request, session: AsyncSession = Depends(get_session)

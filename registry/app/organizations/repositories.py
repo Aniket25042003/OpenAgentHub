@@ -27,6 +27,21 @@ class OrganizationRepository:
     async def by_id(self, organization_id: int) -> Organization | None:
         return await self.session.get(Organization, organization_id)
 
+    async def active_membership(self, organization_id: int, user_id: int) -> OrganizationMember | None:
+        """Return the membership only when the organization itself is active."""
+        row = (
+            await self.session.execute(
+                select(OrganizationMember)
+                .join(Organization, Organization.id == OrganizationMember.organization_id)
+                .where(
+                    OrganizationMember.organization_id == organization_id,
+                    OrganizationMember.user_id == user_id,
+                    Organization.status == "active",
+                )
+            )
+        ).scalar_one_or_none()
+        return row
+
     async def create(
         self, *, slug: str, display_name: str, owner_id: int
     ) -> Organization:
