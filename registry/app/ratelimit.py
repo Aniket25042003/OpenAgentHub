@@ -65,6 +65,8 @@ class RateLimitBackend(Protocol):
 
     def record(self, key: str, window_seconds: int) -> None: ...
 
+    def retry_after(self, key: str, window_seconds: int) -> int: ...
+
     def reset(self) -> None: ...
 
 
@@ -74,34 +76,57 @@ class MemoryRateLimitBackend:
     def __init__(self) -> None:
         self._events: dict[str, deque[float]] = defaultdict(deque)
 
-    def events_in_window(self, key: str, window_seconds: int) -> int:
+    def _prune(self, key: str, window_seconds: int) -> None:
         now = time.monotonic()
         queue = self._events[key]
         while queue and queue[0] <= now - window_seconds:
             queue.popleft()
-        return len(queue)
+
+    def events_in_window(self, key: str, window_seconds: int) -> int:
+        self._prune(key, window_seconds)
+        return len(self._events[key])
 
     def record(self, key: str, window_seconds: int) -> None:
         self._events[key].append(time.monotonic())
+
+    def retry_after(self, key: str, window_seconds: int) -> int:
+        self._prune(key, window_seconds)
+        queue = self._events[key]
+        if not queue:
+            return 0
+        now = time.monotonic()
+        return max(1, int(window_seconds - (now - queue[0])) + 1)
 
     def reset(self) -> None:
         self._events.clear()
 
 
 class RedisRateLimitBackend:
-    """Shared backend for multi-instance deployments (requires python-redis)."""
+    """Shared sliding-window backend for multi-instance deployments (requires python-redis).
+
+    Events are stored in a ZSET keyed by ``(key, window)`` with wall-clock
+    timestamps as scores, mirroring the memory backend's window semantics.
+    """
 
     def __init__(self, client) -> None:
         self._redis = client
 
     def events_in_window(self, key: str, window_seconds: int) -> int:
-        value = self._redis.get(key)
-        return int(value) if value is not None else 0
+        cutoff = time.time() - window_seconds
+        self._redis.zremrangebyscore(key, "-inf", cutoff)
+        return int(self._redis.zcard(key))
 
     def record(self, key: str, window_seconds: int) -> None:
-        self._redis.incr(key)
-        if self._redis.ttl(key) < 0:
-            self._redis.expire(key, window_seconds * 2)
+        self._redis.zadd(key, {time.time_ns(): time.time()})
+        self._redis.expire(key, window_seconds * 2)
+
+    def retry_after(self, key: str, window_seconds: int) -> int:
+        cutoff = time.time() - window_seconds
+        self._redis.zremrangebyscore(key, "-inf", cutoff)
+        oldest = self._redis.zrange(key, 0, 0, withscores=True)
+        if not oldest:
+            return 0
+        return max(1, int(window_seconds - (time.time() - oldest[0][1])) + 1)
 
     def reset(self) -> None:
         raise RuntimeError("reset not supported against a shared backing store")
@@ -118,7 +143,7 @@ class SlidingWindowRateLimiter:
         """Record one event for ``key``; if over ``limit`` return seconds until allowed."""
         bkey = self._backend_key(key, window_seconds)
         if self.backend.events_in_window(bkey, window_seconds) >= limit:
-            return max(1, int(window_seconds))
+            return max(1, self.backend.retry_after(bkey, window_seconds))
         self.backend.record(bkey, window_seconds)
         return None
 
