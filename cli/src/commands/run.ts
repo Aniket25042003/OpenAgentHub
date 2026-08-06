@@ -119,6 +119,8 @@ export default class Run extends Command {
       exitCode: result.result.exitCode,
       exitReason: result.result.timedOut ? "timeout" : result.sandbox === "container" && result.result.exitCode === 137 ? "oom" : "exit",
       endedAt: new Date().toISOString(),
+      modelProvider: result.model.provider,
+      modelName: result.model.model,
     };
     writeRun(final);
 

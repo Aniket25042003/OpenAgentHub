@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DetectedAgent, HostInfo, SystemSnapshot } from "@openagenthub/runtime";
 import { Reveal } from "@/components/reveal";
+import { UsageSection } from "@/components/usage-section";
 
 const POLL_MS = 8000;
 
@@ -64,6 +65,9 @@ export function Dashboard() {
           </Reveal>
           <Reveal delay={240}>
             <Containers snap={snap} />
+          </Reveal>
+          <Reveal delay={320}>
+            <UsageSection />
           </Reveal>
         </>
       ) : (

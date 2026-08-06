@@ -1,10 +1,14 @@
 import { Command, Args } from "@oclif/core";
+import { readFileSync, rmSync } from "node:fs";
+import { openUsageStore, type UsageSample } from "@openagenthub/runtime";
 import { executeAgentRun, prepareRunContext } from "../lib/run-agent.js";
 import {
   allocatePort,
+  containerStats,
   dockerContainerByRunId,
   probeHttpHealth,
   readRun,
+  runLogPath,
   writeRun,
   type RunRecord,
 } from "../lib/supervisor.js";
@@ -34,6 +38,47 @@ export default class SupervisorRun extends Command {
 
     record = { ...record, state: "running" };
     writeRun(record);
+
+    const usageFilePath = `${runLogPath(record.runId)}.usage.jsonl`;
+
+    const recordUsage = (): void => {
+      let raw: string;
+      try {
+        raw = readFileSync(usageFilePath, "utf8");
+      } catch {
+        return;
+      }
+      const samples: UsageSample[] = [];
+      for (const line of raw.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          samples.push(JSON.parse(line) as UsageSample);
+        } catch {
+          /* skip malformed usage lines */
+        }
+      }
+      if (samples.length === 0) return;
+      const store = openUsageStore();
+      for (const s of samples) {
+        store.recordUsage({ ...s, runId: record.runId });
+      }
+      store.close();
+    };
+
+    const recordResourceSample = (): void => {
+      const containerId = (readRun(record.runId) ?? record).containerId;
+      if (!containerId) return;
+      const stats = containerStats(containerId);
+      if (!stats) return;
+      const store = openUsageStore();
+      store.recordResourceSample({
+        runId: record.runId,
+        containerId,
+        memBytes: memUsageBytes(stats.memUsage?.split("/")[0]),
+        cpuPercent: Number(stats.cpuPerc?.replace("%", "")) || undefined,
+      });
+      store.close();
+    };
 
     const agentSpec = record.agentKey;
     const slash = agentSpec.lastIndexOf("/");
@@ -80,6 +125,9 @@ export default class SupervisorRun extends Command {
         exitReason: reason,
         endedAt: new Date().toISOString(),
       });
+      recordUsage();
+      recordResourceSample();
+      rmSync(usageFilePath, { force: true });
       process.exit(0);
     };
 
@@ -110,6 +158,7 @@ export default class SupervisorRun extends Command {
         timeoutMs: record.timeoutMs,
         runId: record.runId,
         streamOutput: true,
+        usageFilePath,
       });
       if (containerPoller) clearInterval(containerPoller);
 
@@ -128,6 +177,11 @@ export default class SupervisorRun extends Command {
             : result.sandbox === "container" && result.result.exitCode === 137
               ? "oom"
               : "exit";
+      writeRun({
+        ...current,
+        modelProvider: result.model.provider,
+        modelName: result.model.model,
+      });
       finalize(result.result.exitCode, reason);
     } catch (err) {
       if (containerPoller) clearInterval(containerPoller);
@@ -135,4 +189,20 @@ export default class SupervisorRun extends Command {
       finalize(1, "crashed");
     }
   }
+}
+
+function memUsageBytes(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const m = raw.trim().match(/^([\d.]+)\s*(B|kB|KiB|MB|MiB|GB|GiB)?$/i);
+  if (!m) return undefined;
+  const mult: Record<string, number> = {
+    b: 1,
+    kb: 1_000,
+    kib: 1_024,
+    mb: 1_000_000,
+    mib: 1_024 ** 2,
+    gb: 1_000_000_000,
+    gib: 1_024 ** 3,
+  };
+  return Math.round(Number(m[1]) * (mult[(m[2] ?? "B").toLowerCase()] ?? 1));
 }

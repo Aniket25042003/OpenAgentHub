@@ -127,6 +127,7 @@ export interface ExecuteOptions {
   model?: string;
   runId?: string;
   streamOutput?: boolean;
+  usageFilePath?: string;
 }
 
 export async function executeAgentRun(ctx: RunContext, opts: ExecuteOptions): Promise<RunAgentResult> {
@@ -148,5 +149,6 @@ export async function executeAgentRun(ctx: RunContext, opts: ExecuteOptions): Pr
     sandboxOverride: ctx.sandboxOverride,
     archiveDigest: ctx.installed.archiveDigest,
     runId: opts.runId,
+    usageFilePath: opts.usageFilePath,
   });
 }

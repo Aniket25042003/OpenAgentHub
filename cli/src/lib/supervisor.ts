@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { CONTROL_BOUND_HOST, CONTROL_DIR } from "@openagenthub/runtime";
+import { CONTROL_BOUND_HOST, CONTROL_DIR, openUsageStore, type RunFacts, type UsageStore } from "@openagenthub/runtime";
 import { BIN_PATH, CONTROL_STOP_TIMEOUT_MS, LOG_MAX_BYTES, LOG_MAX_FILES, isProcessAlive, selectPort } from "./control-plane.js";
 
 export const RUNS_DIR = join(CONTROL_DIR, "runs");
@@ -57,6 +57,8 @@ export interface RunRecord {
   exitCode?: number;
   exitReason?: ExitReason;
   digest?: string;
+  modelProvider?: string;
+  modelName?: string;
 }
 
 const VALID_STATES: RunState[] = ["starting", "running", "stopping", "exited", "failed", "orphaned"];
@@ -84,18 +86,59 @@ export function readRun(runId: string): RunRecord | null {
   }
 }
 
+let usageStore: UsageStore | null = null;
+
+function usage(): UsageStore {
+  usageStore ??= openUsageStore();
+  return usageStore;
+}
+
+export function toRunFacts(record: RunRecord): RunFacts {
+  return {
+    runId: record.runId,
+    agentKey: record.agentKey,
+    version: record.version,
+    interfaceName: record.interfaceName,
+    sandbox: record.sandbox,
+    state: record.state,
+    health: record.health,
+    exitCode: record.exitCode,
+    exitReason: record.exitReason,
+    containerId: record.containerId,
+    createdAt: record.createdAt,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+    modelProvider: record.modelProvider,
+    modelName: record.modelName,
+  };
+}
+
+export function syncRunToUsage(record: RunRecord): void {
+  try {
+    usage().syncRun(toRunFacts(record));
+  } catch {
+    /* usage store must never break run execution */
+  }
+}
+
 export function writeRun(record: RunRecord): void {
   if (!VALID_STATES.includes(record.state)) throw new Error(`invalid run state: ${record.state}`);
   mkdirSync(RUNS_DIR, { recursive: true, mode: 0o700 });
   const tmp = `${runRecordPath(record.runId)}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(record, null, 2), { mode: 0o600 });
   renameSync(tmp, runRecordPath(record.runId));
+  syncRunToUsage(record);
 }
 
 export function removeRun(runId: string): void {
   rmSync(runRecordPath(runId), { force: true });
   for (const f of runLogFilenames(runId)) rmSync(f, { force: true });
   rmSync(runLogPath(runId), { force: true });
+  try {
+    usage().pruneById(runId);
+  } catch {
+    /* usage store must never break removal */
+  }
 }
 
 export function listRuns(): RunRecord[] {
