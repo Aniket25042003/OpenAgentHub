@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
@@ -98,6 +98,15 @@ class SigningKeyRepository:
     def revoke(self, key: SigningKey) -> None:
         key.revoked_at = utcnow()
 
+    async def revoke_all_for_user(self, user_id: int) -> int:
+        """Bulk-revoke every signing key for a user; returns rows touched."""
+        result = await self.session.execute(
+            update(SigningKey)
+            .where(SigningKey.user_id == user_id, SigningKey.revoked_at.is_(None))
+            .values(revoked_at=utcnow())
+        )
+        return result.rowcount or 0
+
 
 class SessionRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -151,19 +160,14 @@ class SessionRepository:
             .all()
         )
 
-    async def revoke_all_for_user(self, user_id: int) -> None:
-        rows = (
-            (
-                await self.session.execute(
-                    select(Session).where(Session.user_id == user_id)
-                )
-            )
-            .scalars()
-            .all()
+    async def revoke_all_for_user(self, user_id: int) -> int:
+        """Bulk-revoke every active session for a user; returns rows touched."""
+        result = await self.session.execute(
+            update(Session)
+            .where(Session.user_id == user_id, Session.revoked_at.is_(None))
+            .values(revoked_at=utcnow())
         )
-        for row in rows:
-            if row.revoked_at is None:
-                row.revoked_at = utcnow()
+        return result.rowcount or 0
 
     def revoke(self, row: Session) -> None:
         row.revoked_at = utcnow()
@@ -303,6 +307,15 @@ class ApiTokenRepository:
 
     def touch(self, row: ApiToken, now: datetime) -> None:
         row.last_used_at = now
+
+    async def revoke_all_for_user(self, user_id: int) -> int:
+        """Bulk-revoke every active token for a user; returns rows touched."""
+        result = await self.session.execute(
+            update(ApiToken)
+            .where(ApiToken.user_id == user_id, ApiToken.revoked_at.is_(None))
+            .values(revoked_at=utcnow())
+        )
+        return result.rowcount or 0
 
     def revoke(self, row: ApiToken) -> None:
         row.revoked_at = utcnow()

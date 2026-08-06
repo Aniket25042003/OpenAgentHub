@@ -222,6 +222,30 @@ async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
     return user
 
 
+async def resolve_cookie_session_only(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    """Resolve the user from the interactive cookie only — never a bearer token.
+
+    Dangerous account operations (e.g. account deletion) must come from the
+    browser session, not a possibly-leaked read-only API token or a JWT that
+    outlived a suspension.
+    """
+    from app.identity.sessions import session_user
+
+    token = request.cookies.get(get_settings().session_cookie_name)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="interactive session required",
+        )
+    user, _ = await session_user(session, token, rotate=False)
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account is suspended")
+    return user
+
+
 async def resolve_cookie_active_user(
     request: Request, session: AsyncSession = Depends(get_session)
 ) -> User:
@@ -331,22 +355,35 @@ async def recent_security_events(session: AsyncSession, user: User, *, limit: in
     return await AuditRepository(session).recent_for_actor(actor_id=user.id, limit=limit)
 
 
+async def ensure_account_deletable(session: AsyncSession, user: User) -> None:
+    """Preconditions for account deletion; raises AccountDeletionBlocked otherwise.
+
+    Runs before any destructive mutation so a blocked deletion never leaves the
+    account half-closed (all credentials revoked but status still active).
+    """
+    from app.organizations.repositories import OrganizationRepository
+
+    org_repo = OrganizationRepository(session)
+    for org, _role in await org_repo.for_user(user.id):
+        member = await org_repo.membership(org, user.id)
+        if member is not None and member.is_owner:
+            owners = [m for m in await org_repo.members(org) if m.is_owner]
+            if len(owners) <= 1:
+                raise AccountDeletionBlocked(
+                    f"transfer ownership of '{org.slug}' before deleting your account"
+                )
+
+
 async def delete_account(session: AsyncSession, user: User) -> None:
-    """Permanently close the account: revoke credentials, leave every
+    """Permanently close the account: validate, revoke credentials, leave every
     organization, mark the user deleted, and audit the closure."""
-    await SessionRepository(session).revoke_all_for_user(user.id)
-    token_repo = ApiTokenRepository(session)
-    for token in await token_repo.for_user(user.id):
-        token_repo.revoke(token)
-    key_repo = SigningKeyRepository(session)
-    for key in await key_repo.for_user(user.id):
-        key_repo.revoke(key)
     from app.organizations.application import remove_user_memberships
 
-    try:
-        await remove_user_memberships(session, user)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await ensure_account_deletable(session, user)
+    await SessionRepository(session).revoke_all_for_user(user.id)
+    await ApiTokenRepository(session).revoke_all_for_user(user.id)
+    await SigningKeyRepository(session).revoke_all_for_user(user.id)
+    await remove_user_memberships(session, user)
     user.status = "deleted"
     await AuditRepository(session).record(
         actor_id=user.id,

@@ -280,10 +280,15 @@ async def remove_member(
 
 
 async def remove_user_memberships(session: AsyncSession, user: User) -> None:
-    """Remove a user from every organization and team (account-deletion path)."""
+    """Remove a user from every organization and team (account-deletion path).
+
+    The sole-owner precondition is validated up front (before any mutation) so
+    a subsequent failure can never leave the deletion half-applied.
+    """
     org_repo = OrganizationRepository(session)
     team_repo = TeamRepository(session)
-    for org, _role in await org_repo.for_user(user.id):
+    memberships = await org_repo.for_user(user.id)
+    for org, _role in memberships:
         member = await org_repo.membership(org, user.id)
         if member is not None and member.is_owner:
             owners = [m for m in await org_repo.members(org) if m.is_owner]
@@ -291,7 +296,7 @@ async def remove_user_memberships(session: AsyncSession, user: User) -> None:
                 raise OrganizationForbidden(
                     f"transfer ownership of '{org.slug}' before deleting your account"
                 )
-    for org, _role in await org_repo.for_user(user.id):
+    for org, _role in memberships:
         member = await org_repo.membership(org, user.id)
         if member is not None:
             await session.delete(member)
@@ -303,10 +308,8 @@ async def remove_user_memberships(session: AsyncSession, user: User) -> None:
                 organization_id=org.id,
                 detail={"slug": org.slug, "reason": "account deleted"},
             )
-        for team in await team_repo.list_for(org):
-            tm = await team_repo.membership(team, user.id)
-            if tm is not None:
-                await session.delete(tm)
+    for tm in await team_repo.memberships_for_user(user.id):
+        await session.delete(tm)
 
 
 async def leave_organization(session: AsyncSession, user: User, slug: str) -> dict:

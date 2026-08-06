@@ -129,7 +129,7 @@ async def test_delete_removes_org_memberships(client, session_settings):
     from app.organizations.application import create_organization
     from app.organizations.models import OrganizationMember
 
-    owner_uid, owner_token = await _cookie_user(
+    owner_uid, _ = await _cookie_user(
         client, session_settings, username=f"own-{uuid.uuid4().hex[:6]}", github_id="88"
     )
     uid, token = await _cookie_user(client, session_settings)
@@ -144,10 +144,17 @@ async def test_delete_removes_org_memberships(client, session_settings):
         await OrganizationRepository(s).add_member(org, member.id, "read_only")
         await s.commit()
         org_id = org.id
+    # a pure bearer credential must NOT be able to delete the account
     del client.cookies[SESSION_COOKIE]
     res = await client.post(
-        "/api/v1/me/delete", json={"confirm": "delete-account"}, headers=auth_header(token)
+        "/api/v1/me/delete",
+        json={"confirm": "delete-account"},
+        headers=auth_header(token),
     )
+    assert res.status_code == 401
+    # the interactive cookie session may
+    client.cookies.set(SESSION_COOKIE, token)
+    res = await client.post("/api/v1/me/delete", json={"confirm": "delete-account"})
     assert res.status_code == 200, res.text
     async with get_session_factory()() as s:
         rows = list(
