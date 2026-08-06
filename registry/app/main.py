@@ -12,6 +12,7 @@ from app.identity.routes import router as identity_router
 from app.organizations.routes import router as organizations_router
 from app.outbox.dispatcher import OutboxDispatcher
 from app.publisher.routes import router as publisher_router
+from app.quotas.routes import router as quotas_router
 from app.ratelimit import RateLimitExceeded
 from app.registry.downloads import get_download_buffer
 from app.registry.routes import router as registry_router
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(registry_router)
     app.include_router(publisher_router)
     app.include_router(organizations_router)
+    app.include_router(quotas_router)
 
     @app.exception_handler(RateLimitExceeded)
     async def rate_limit_handler(request: Request, exc: RateLimitExceeded):

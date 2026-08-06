@@ -39,8 +39,9 @@ registry/
 │   ├── identity/         users (roles/status), GitHub OAuth, JWT, signing-key lifecycle
 │   ├── registry/         agents + versions, namespaces + ACL, publish/search/download use cases
 │   ├── security_review/  canonical manifest schema + archive safety scan (ports)
-│   ├── organizations/    module boundary (authz lands in later milestones)
+│   ├── organizations/    orgs, roles, teams, invitations, service accounts, audit-log APIs
 │   ├── entitlements/     publish quotas + rate limits (billing lands later)
+│   ├── quotas/           org storage/download/member quotas, overrides with expiry
 │   ├── audit/            append-only audit events
 │   ├── outbox/           outbox events, durable queue, dispatcher, worker base
 │   └── workers/          scan / notifications / billing / maintenance entrypoints
@@ -107,6 +108,12 @@ registry/
   `scan.requested` outbox event processed by the scan worker.
 - New-account publish quotas (audit-enforced) + per-IP publish throttle (429
   with `Retry-After`).
+- Organization quotas (`app/quotas/`): package/version/storage counts,
+  monthly download bandwidth, members, and service accounts, enforced
+  transactionally inside the publish/download/member flows. Administrator
+  overrides (`GET/PUT /api/v1/orgs/{slug}/quota`) are bounded by an expiry and
+  audited (`organization.quota.override_set`). Pre-existing databases are
+  migrated with `archive_bytes` populated on publish.
 - Upload caps: archive bytes (413 beyond `REGISTRY_MAX_ARCHIVE_BYTES`) and
   signature file (1 MiB).
 - Path-traversal guard in `ArchiveStore._safe_segment`.

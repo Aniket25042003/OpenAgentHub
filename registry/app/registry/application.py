@@ -249,7 +249,7 @@ def _blocked_download_reason(ver: AgentVersion) -> str | None:
 
 async def download_archive(
     session: AsyncSession, namespace: str, name: str, version: str, user: User | None = None
-) -> tuple[bytes, int]:
+) -> tuple[bytes, int, int | None]:
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None or not await can_view(session, agent, user):
         raise AgentNotFound("agent not found")
@@ -262,12 +262,12 @@ async def download_archive(
     data = await ArchiveStore().get(namespace, name, ver.version)
     if data is None:
         raise ArchiveMissing("archive missing on server")
-    return data, ver.id
+    return data, ver.id, agent.organization_id
 
 
 async def download_archive_via_token(
     session: AsyncSession, namespace: str, name: str, version: str, token: str
-) -> tuple[bytes, int]:
+) -> tuple[bytes, int, int | None]:
     agent = await AgentRepository(session).by_namespace_name(namespace, name)
     if agent is None:
         raise AgentNotFound("agent not found")
@@ -290,7 +290,7 @@ async def download_archive_via_token(
     data = await ArchiveStore().get(namespace, name, ver.version)
     if data is None:
         raise ArchiveMissing("archive missing on server")
-    return data, ver.id
+    return data, ver.id, agent.organization_id
 
 
 class DownloadUrlError(ValueError):
@@ -330,6 +330,9 @@ async def issue_download_url(
         action="package.download_url_issued",
         target_type="agent_version",
         target_id=ver.id,
+        organization_id=agent.organization_id,
+        namespace=namespace,
+        name=name,
         detail={"namespace": namespace, "name": name, "version": ver.version},
     )
     return {"url": url, "expiresInSeconds": settings.download_url_ttl_seconds, "version": ver.version}
@@ -483,12 +486,27 @@ async def publish_version(
     if await version_repo.by_agent_and_version(agent, version) is not None:
         raise VersionConflict(f"version {version} already published (re-publish with a new version)")
 
+    if agent.organization_id is not None:
+        from app.quotas.application import QuotaExceeded as OrgQuotaBlocked
+        from app.quotas import application as quota_app
+
+        try:
+            await quota_app.enforce_publish_quota(
+                session, agent.organization_id, new_versions=1, new_bytes=len(archive_data)
+            )
+        except OrgQuotaBlocked as exc:
+            raise OrgQuotaBlocked(
+                exc.dimension, exc.used, exc.limit,
+                message=f"{exc}; release capacity or raise the organization quota",
+            ) from exc
+
     ver = await version_repo.create(
         agent_id=agent.id,
         version=version,
         manifest=manifest,
         sha256=sha256_hex(archive_data),
         archive_name=f"{namespace}_{name}-{version}.ahb",
+        archive_bytes=len(archive_data),
         signature=sig.model_dump(),
         published_by_id=user.id,
         security_status="pending",
@@ -511,7 +529,14 @@ async def publish_version(
         {"version_id": ver.id, "namespace": namespace, "name": name, "version": version, "sha256": ver.sha256},
     )
     await AuditRepository(session).record(
-        actor_id=user.id, action="version.published", target_type="agent_version", target_id=ver.id
+        actor_id=user.id,
+        action="version.published",
+        target_type="agent_version",
+        target_id=ver.id,
+        namespace=namespace,
+        name=name,
+        organization_id=agent.organization_id,
+        detail={"version": version, "sha256": ver.sha256, "visibility": visibility},
     )
     await bump_catalog(session)
     return PublishResult(security=security_status, findings=findings)
@@ -585,8 +610,11 @@ async def review_version(
         actor_id=user.id,
         action="version.reviewed",
         target_type="agent_version",
-        target_id=ver.id,
-        detail={"namespace": namespace, "name": name, "version": version, "action": action, "status": status},
+target_id=ver.id,
+            namespace=namespace,
+            name=name,
+            organization_id=agent.organization_id,
+            detail={"namespace": namespace, "name": name, "version": version, "action": action, "status": status},
     )
     await bump_catalog(session)
     return {
@@ -684,6 +712,9 @@ async def yank_version(session: AsyncSession, user: User, namespace: str, name: 
             action="version.yanked" if yanked else "version.unyanked",
             target_type="agent_version",
             target_id=ver.id,
+            namespace=namespace,
+            name=name,
+            organization_id=agent.organization_id,
             detail={"namespace": namespace, "name": name, "version": version},
         )
         await bump_catalog(session)
@@ -726,14 +757,26 @@ async def set_package_visibility(
     else:
         organization_id = None
 
+    previous_org = agent.organization_id
     changed = agent_repo.set_visibility(agent, visibility)
     agent_repo.bind_organization(agent, organization_id)
     if changed:
+        if organization_id is not None and organization_id != previous_org:
+            from app.quotas.application import QuotaExceeded as QuotaBlocked
+            from app.quotas import application as quota_app
+
+            try:
+                await quota_app.enforce_publish_quota(session, organization_id, new_versions=0)
+            except QuotaBlocked as exc:
+                raise RegistryError(str(exc)) from exc
         await AuditRepository(session).record(
             actor_id=user.id,
             action="package.visibility_changed",
             target_type="agent",
             target_id=agent.id,
+            organization_id=organization_id,
+            namespace=namespace,
+            name=name,
             detail={"namespace": namespace, "name": name, "visibility": visibility},
         )
         await bump_catalog(session)
@@ -800,6 +843,9 @@ async def grant_package_access(
         action="package.access_granted",
         target_type="agent_grant",
         target_id=row.id,
+        organization_id=agent.organization_id,
+        namespace=namespace,
+        name=name,
         detail=detail,
     )
     return {"username": username, "teamId": team_id, "agent": f"{namespace}/{name}"}
@@ -839,6 +885,9 @@ async def revoke_package_access(
         action="package.access_revoked",
         target_type="agent_grant",
         target_id=grant.id,
+        organization_id=agent.organization_id,
+        namespace=namespace,
+        name=name,
         detail=detail,
     )
     return {"username": username, "teamId": team_id, "agent": f"{namespace}/{name}"}
@@ -855,3 +904,34 @@ async def _require_namespace_or_reviewer(session: AsyncSession, user: User, name
         return
     if member is None and user.role not in ("reviewer", "admin"):
         raise RegistryError("you are not a member of this namespace")
+
+
+async def get_package_audit_log(
+    session: AsyncSession,
+    user: User,
+    namespace: str,
+    name: str,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+    action: str | None = None,
+) -> dict:
+    """Audit trail scoped to a private package; viewers must be able to view it."""
+    from app.audit.repositories import AuditRepository
+
+    agent = await AgentRepository(session).by_namespace_name(namespace, name)
+    if agent is None:
+        raise AgentNotFound("agent not found")
+    if not await can_view(session, agent, user):
+        raise AgentNotFound("agent not found")
+    events = await AuditRepository(session).search(
+        namespace=namespace,
+        name=name,
+        limit=limit,
+        before_id=before_id,
+        action=action,
+    )
+    return {
+        "items": events,
+        "nextCursor": events[-1].id if len(events) == limit else None,
+    }

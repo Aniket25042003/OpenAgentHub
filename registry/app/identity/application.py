@@ -11,7 +11,7 @@ from app.audit.repositories import AuditRepository
 from app.config import get_settings
 from app.db import get_session
 from app.identity.models import SigningKey, User
-from app.identity.repositories import SessionRepository, SigningKeyRepository, UserRepository
+from app.identity.repositories import ApiTokenRepository, SessionRepository, SigningKeyRepository, UserRepository
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -63,12 +63,7 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
     token = credentials.credentials
-    try:
-        payload = decode_token(token)
-        user_id = payload.get("sub")
-        user = await UserRepository(session).by_id(int(user_id))
-    except HTTPException:
-        user = await _user_from_session(session, token)
+    user = await _user_from_bearer(token, session)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user no longer exists")
     return user
@@ -84,10 +79,92 @@ async def _user_from_session(session: AsyncSession, token: str) -> User | None:
         return None
 
 
+async def _user_from_api_token(session: AsyncSession, token: str) -> User | None:
+    from datetime import datetime, timezone
+
+    row = await ApiTokenRepository(session).by_token_hash(_hash_token(token))
+    if row is None or row.revoked_at is not None:
+        return None
+    if row.expires_at is not None:
+        expires = row.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= datetime.now(timezone.utc):
+            return None
+    user = await session.get(User, row.user_id)
+    if user is None or user.status != "active":
+        return None
+    if row.is_service_account:
+        from app.organizations.repositories import ServiceAccountRepository
+
+        sa = await ServiceAccountRepository(session).by_user_id(row.user_id)
+        if sa is None or sa.status != "active":
+            return None
+    user._api_token = row
+    user._api_token_org_id = row.organization_id
+    ApiTokenRepository(session).touch(row, datetime.now(timezone.utc))
+    return user
+
+
+def _hash_token(token: str) -> str:
+    from app.identity.sessions import hash_token
+
+    return hash_token(token)
+
+
 async def require_active_user(user: User = Depends(get_current_user)) -> User:
     if user.status != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account is suspended")
     return user
+
+
+async def api_token_scopes(request: Request, session: AsyncSession) -> frozenset[str] | None:
+    """Return the scope set of the bearer credential, or None for session/JWT auth.
+
+    API tokens carry explicit scopes; interactive sessions and CLI JWTs are
+    full-access credentials and return None. Routes that need scoping check
+    ``require_scope`` which consults this.
+    """
+    bearer = request.headers.get("authorization", "")
+    if not bearer.startswith("Bearer "):
+        return None
+    token = bearer.removeprefix("Bearer ").strip()
+    if not token:
+        return None
+    try:
+        decode_token(token)
+        return None
+    except HTTPException:
+        pass
+    from app.identity.api_tokens import scope_set
+    from app.identity.sessions import hash_token
+
+    row = await ApiTokenRepository(session).by_token_hash(hash_token(token))
+    if row is None or row.revoked_at is not None:
+        return None
+    return scope_set(row.scopes)
+
+
+def require_scope(*scopes: str):
+    """Dependency: deny API-token-authenticated requests lacking any required scope.
+
+    Interactive session/JWT credentials are full-access and always pass.
+    """
+
+    async def _check(
+        request: Request,
+        session: AsyncSession = Depends(get_session),
+        user: User = Depends(require_active_user),
+    ) -> User:
+        granted = await api_token_scopes(request, session)
+        if granted is not None and not (set(scopes) & granted):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"token lacks required scope (need one of: {', '.join(scopes)})",
+            )
+        return user
+
+    return _check
 
 
 def require_roles(*roles: str):
@@ -101,6 +178,29 @@ def require_roles(*roles: str):
 
 require_admin = require_roles("admin")
 require_reviewer_or_admin = require_roles("reviewer", "admin")
+
+
+def require_cookie_scope(*scopes: str):
+    """Dependency for cookie-first routes: deny API-token auth lacking a scope.
+
+    Session cookies remain full-access; bearer API tokens must carry one of
+    ``scopes`` (mirrors ``require_scope`` for ``resolve_cookie_active_user``).
+    """
+
+    async def _check(
+        request: Request,
+        session: AsyncSession = Depends(get_session),
+        user: User = Depends(resolve_cookie_active_user),
+    ) -> User:
+        granted = await api_token_scopes(request, session)
+        if granted is not None and not (set(scopes) & granted):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"token lacks required scope (need one of: {', '.join(scopes)})",
+            )
+        return user
+
+    return _check
 
 
 async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
@@ -172,7 +272,10 @@ async def _user_from_bearer(token: str, session: AsyncSession) -> User | None:
             return user
     except (HTTPException, KeyError, ValueError):
         pass
-    return await _user_from_session(session, token)
+    user = await _user_from_session(session, token)
+    if user is not None:
+        return user
+    return await _user_from_api_token(session, token)
 
 
 async def exchange_github_code(code: str) -> tuple[str, str, str | None]:

@@ -31,6 +31,14 @@ async def can_view(session: AsyncSession, agent: Agent, user: User | None) -> bo
         return True
     if user is None or user.status != "active":
         return False
+    token_org = getattr(user, "_api_token_org_id", None)
+    if (
+        token_org is not None
+        and user.role not in ("reviewer", "admin")
+        and agent.organization_id is not None
+        and agent.organization_id != token_org
+    ):
+        return False
     if agent.owner_id == user.id:
         return True
     if user.role in ("reviewer", "admin"):
@@ -61,6 +69,14 @@ async def can_manage(session: AsyncSession, agent: Agent, user: User | None) -> 
     """Publisher-level control: owner of the package or owner/admin of its org/namespace."""
     if user is None or user.status != "active":
         return False
+    token_org = getattr(user, "_api_token_org_id", None)
+    if (
+        token_org is not None
+        and user.role not in ("reviewer", "admin")
+        and agent.organization_id is not None
+        and agent.organization_id != token_org
+    ):
+        return False
     if agent.owner_id == user.id:
         return True
     if user.role in ("reviewer", "admin"):
@@ -88,6 +104,14 @@ async def can_manage_access(session: AsyncSession, agent: Agent, user: User | No
     owner/administrator, or the namespace *owner* may do that.
     """
     if user is None or user.status != "active":
+        return False
+    token_org = getattr(user, "_api_token_org_id", None)
+    if (
+        token_org is not None
+        and user.role not in ("reviewer", "admin")
+        and agent.organization_id is not None
+        and agent.organization_id != token_org
+    ):
         return False
     if agent.owner_id == user.id:
         return True

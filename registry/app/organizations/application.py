@@ -13,6 +13,7 @@ from app.organizations.models import ORG_ROLES, Organization, OrganizationMember
 from app.organizations.repositories import (
     InvitationRepository,
     OrganizationRepository,
+    ServiceAccountRepository,
     TeamRepository,
 )
 
@@ -94,6 +95,7 @@ async def create_organization(
         action="organization.created",
         target_type="organization",
         target_id=org.id,
+        organization_id=org.id,
         detail={"slug": slug},
     )
     return org
@@ -147,6 +149,7 @@ async def update_organization(
         action="organization.updated",
         target_type="organization",
         target_id=org.id,
+        organization_id=org.id,
         detail={"slug": slug},
     )
     return org
@@ -182,12 +185,20 @@ async def add_member(
         raise OrganizationError(f"user '{username}' not found")
     if await org_repo.membership(org, target.id) is not None:
         raise OrganizationConflict(f"user '{username}' is already a member")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_org_member_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
     row = await org_repo.add_member(org, target.id, role)
     await AuditRepository(session).record(
         actor_id=actor.id,
         action="organization.member.added",
         target_type="organization_member",
         target_id=row.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username, "role": role},
     )
     return {"slug": slug, "username": username, "role": role}
@@ -225,6 +236,7 @@ async def change_member_role(
         action="organization.member.role_changed",
         target_type="organization_member",
         target_id=target_member.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username, "role": role},
     )
     return {"slug": slug, "username": username, "role": role}
@@ -258,6 +270,7 @@ async def remove_member(
         action="organization.member.removed",
         target_type="organization_member",
         target_id=target_member.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username},
     )
     return {"slug": slug, "username": username}
@@ -281,6 +294,7 @@ async def leave_organization(session: AsyncSession, user: User, slug: str) -> di
         action="organization.member.left",
         target_type="organization_member",
         target_id=member.id,
+        organization_id=org.id,
         detail={"slug": slug},
     )
     return {"slug": slug}
@@ -317,6 +331,13 @@ async def invite_member(
         raise OrganizationError(f"user '{username}' not found")
     if await org_repo.membership(org, target.id) is not None:
         raise OrganizationConflict(f"user '{username}' is already a member")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_org_member_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
     settings = get_settings()
     ttl = ttl_hours or settings.invitation_ttl_hours
     raw, hashed = issue_invitation_token()
@@ -335,6 +356,7 @@ async def invite_member(
         action="organization.invitation.created",
         target_type="invitation",
         target_id=row.id,
+        organization_id=org.id,
         detail={"slug": slug, "username": username, "role": role},
     )
     return {
@@ -361,6 +383,13 @@ async def accept_invitation(session: AsyncSession, user: User, token: str) -> di
         raise InvitationError("organization is not accepting members")
     if await org_repo.membership(org, user.id) is not None:
         raise OrganizationConflict("you are already a member")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_org_member_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
     await org_repo.add_member(org, user.id, inv.role)
     await repo.mark_accepted(inv, user.id)
     await AuditRepository(session).record(
@@ -368,6 +397,7 @@ async def accept_invitation(session: AsyncSession, user: User, token: str) -> di
         action="organization.invitation.accepted",
         target_type="invitation",
         target_id=inv.id,
+        organization_id=org.id,
         detail={"slug": org.slug, "role": inv.role},
     )
     return {"slug": org.slug, "role": inv.role}
@@ -430,6 +460,7 @@ async def create_team(session: AsyncSession, user: User, slug: str, name: str) -
         action="organization.team.created",
         target_type="team",
         target_id=team.id,
+        organization_id=org.id,
         detail={"slug": slug, "name": team.name},
     )
     return {"id": team.id, "name": team.name}
@@ -464,6 +495,7 @@ async def add_team_member(
         action="organization.team.member.added",
         target_type="team_member",
         target_id=team.id,
+        organization_id=org.id,
         detail={"slug": slug, "team": team.name, "username": username},
     )
     return {"slug": slug, "team": team.name, "username": username}
@@ -495,6 +527,209 @@ async def remove_team_member(
         action="organization.team.member.removed",
         target_type="team_member",
         target_id=team.id,
+        organization_id=org.id,
         detail={"slug": slug, "team": team.name, "username": username},
     )
     return {"slug": slug, "team": team.name, "username": username}
+
+
+SERVICE_ACCOUNT_ROLES = tuple(r for r in ORG_ROLES if r != "owner")
+
+
+async def create_service_account(
+    session: AsyncSession, actor: User, slug: str, *, name: str, role: str
+) -> dict:
+    if not name.strip() or len(name.strip()) > 64:
+        raise OrganizationError("service account name is required (max 64 chars)")
+    if role not in SERVICE_ACCOUNT_ROLES:
+        raise OrganizationError(f"role must be one of {', '.join(SERVICE_ACCOUNT_ROLES)}")
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, actor.id), org)
+    if not (member.is_owner or member.role in ("administrator", "maintainer")):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    sa_repo = ServiceAccountRepository(session)
+    if await sa_repo.in_organization(org, name.strip()) is not None:
+        raise OrganizationConflict(f"service account '{name}' already exists")
+    from app.quotas.application import QuotaExceeded as QuotaBlocked
+    from app.quotas import application as quota_app
+
+    try:
+        await quota_app.enforce_service_account_quota(session, org.id)
+    except QuotaBlocked as exc:
+        raise OrganizationError(str(exc)) from exc
+    from app.identity.models import User
+
+    user = await UserRepository(session).by_username(f"svc-{slug}-{name.strip().lower().replace(' ', '-')}")
+    if user is not None:
+        raise OrganizationConflict(f"a user for service account '{name}' already exists")
+    username = f"svc-{slug}-{name.strip().lower().replace(' ', '-')}"
+    identity = User(username=username, role="publisher")
+    session.add(identity)
+    await session.flush()
+    await org_repo.add_member(org, identity.id, role)
+    row = await sa_repo.create(organization=org, user_id=identity.id, name=name.strip(), created_by_id=actor.id)
+    await AuditRepository(session).record(
+        actor_id=actor.id,
+        action="organization.service_account.created",
+        target_type="service_account",
+        target_id=row.id,
+        organization_id=org.id,
+        detail={"slug": slug, "name": row.name, "role": role},
+    )
+    return {"slug": slug, "name": row.name, "role": role, "id": row.id}
+
+
+async def list_service_accounts(session: AsyncSession, user: User, slug: str) -> list[dict]:
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, user.id), org)
+    if not (member.is_owner or member.role in ("administrator", "maintainer")):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    rows = await ServiceAccountRepository(session).for_organization(org)
+    users = {
+        u.id: u
+        for u in await UserRepository(session).by_ids([r.user_id for r in rows])
+    }
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "status": r.status,
+            "username": users[r.user_id].username,
+            "role": (await org_repo.membership(org, r.user_id)).role if await org_repo.membership(org, r.user_id) else "read_only",
+        }
+        for r in rows
+    ]
+
+
+async def delete_service_account(
+    session: AsyncSession, actor: User, slug: str, sa_id: int
+) -> dict:
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, actor.id), org)
+    if not (member.is_owner or member.role in ("administrator", "maintainer")):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    sa_repo = ServiceAccountRepository(session)
+    sa = await sa_repo.by_id(sa_id)
+    if sa is None or sa.organization_id != org.id:
+        raise OrganizationNotFound("service account not found")
+    from app.identity.repositories import ApiTokenRepository, UserRepository
+
+    membership = await org_repo.membership(org, sa.user_id)
+    if membership is not None:
+        await session.delete(membership)
+    tokens = await ApiTokenRepository(session).for_user(sa.user_id)
+    for token in tokens:
+        if token.revoked_at is None:
+            ApiTokenRepository(session).revoke(token)
+    identity = await UserRepository(session).by_id(sa.user_id)
+    if identity is not None:
+        UserRepository(session).update_status(identity, "suspended")
+    await session.delete(sa)
+    await AuditRepository(session).record(
+        actor_id=actor.id,
+        action="organization.service_account.deleted",
+        target_type="service_account",
+        target_id=sa.id,
+        organization_id=org.id,
+        detail={"slug": slug, "name": sa.name},
+    )
+    return {"slug": slug, "name": sa.name}
+
+
+async def issue_service_account_token(
+    session: AsyncSession,
+    actor: User,
+    slug: str,
+    *,
+    sa_id: int,
+    label: str,
+    scopes: list[str],
+    expires_in_days: int | None = None,
+) -> dict:
+    from app.identity.api_tokens import TokenError, create_api_token
+
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, actor.id), org)
+    if not (member.is_owner or member.role in ("administrator", "maintainer")):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    sa_repo = ServiceAccountRepository(session)
+    sa = await sa_repo.by_id(sa_id)
+    if sa is None or sa.organization_id != org.id:
+        raise OrganizationNotFound("service account not found")
+    if sa.status != "active":
+        raise OrganizationError("service account is not active")
+    identity = await UserRepository(session).by_id(sa.user_id)
+    if identity is None or identity.status != "active":
+        raise OrganizationError("service account identity is not active")
+    try:
+        raw, row = await create_api_token(
+            session,
+            identity,
+            label=label,
+            scopes=scopes,
+            organization_id=org.id,
+            is_service_account=True,
+            expires_in_days=expires_in_days,
+        )
+    except TokenError as exc:
+        raise OrganizationError(str(exc)) from exc
+    await AuditRepository(session).record(
+        actor_id=actor.id,
+        action="organization.service_account.token_issued",
+        target_type="api_token",
+        target_id=row.id,
+        organization_id=org.id,
+        detail={"slug": slug, "name": sa.name, "prefix": row.prefix, "scopes": row.scopes},
+    )
+    return {
+        "id": row.id,
+        "token": raw,
+        "prefix": row.prefix,
+        "scopes": [s for s in row.scopes.split(",") if s],
+        "name": sa.name,
+    }
+
+
+AUDIT_ROLES = ("owner", "administrator", "maintainer")
+
+
+async def get_org_audit_log(
+    session: AsyncSession,
+    user: User,
+    slug: str,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+    action: str | None = None,
+) -> dict:
+    from app.audit.repositories import AuditRepository
+
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, user.id), org)
+    if member.role not in AUDIT_ROLES:
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role for audit access")
+    events = await AuditRepository(session).search(
+        organization_id=org.id,
+        limit=limit,
+        before_id=before_id,
+        action=action,
+    )
+    return {
+        "items": events,
+        "nextCursor": events[-1].id if len(events) == limit else None,
+    }

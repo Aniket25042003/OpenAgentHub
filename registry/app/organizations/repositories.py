@@ -8,6 +8,7 @@ from app.organizations.models import (
     Invitation,
     Organization,
     OrganizationMember,
+    ServiceAccount,
     Team,
     TeamMember,
 )
@@ -41,6 +42,16 @@ class OrganizationRepository:
             )
         ).scalar_one_or_none()
         return row
+
+    async def membership_by_id(self, organization_id: int, user_id: int) -> OrganizationMember | None:
+        return (
+            await self.session.execute(
+                select(OrganizationMember).where(
+                    OrganizationMember.organization_id == organization_id,
+                    OrganizationMember.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
 
     async def create(
         self, *, slug: str, display_name: str, owner_id: int
@@ -214,3 +225,62 @@ class InvitationRepository:
     async def mark_accepted(self, invitation: Invitation, user_id: int) -> None:
         invitation.accepted_by_id = user_id
         invitation.accepted_at = utcnow()
+
+
+class ServiceAccountRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def by_id(self, sa_id: int) -> ServiceAccount | None:
+        return await self.session.get(ServiceAccount, sa_id)
+
+    async def by_user_id(self, user_id: int) -> ServiceAccount | None:
+        return (
+            await self.session.execute(
+                select(ServiceAccount).where(ServiceAccount.user_id == user_id)
+            )
+        ).scalar_one_or_none()
+
+    async def in_organization(self, organization: Organization, name: str) -> ServiceAccount | None:
+        return (
+            await self.session.execute(
+                select(ServiceAccount).where(
+                    ServiceAccount.organization_id == organization.id,
+                    ServiceAccount.name == name,
+                )
+            )
+        ).scalar_one_or_none()
+
+    async def for_organization(self, organization: Organization) -> list[ServiceAccount]:
+        return (
+            (
+                await self.session.execute(
+                    select(ServiceAccount)
+                    .where(ServiceAccount.organization_id == organization.id)
+                    .order_by(ServiceAccount.name)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    async def create(
+        self,
+        *,
+        organization: Organization,
+        user_id: int,
+        name: str,
+        created_by_id: int,
+    ) -> ServiceAccount:
+        row = ServiceAccount(
+            organization_id=organization.id,
+            user_id=user_id,
+            name=name,
+            created_by_id=created_by_id,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def suspend(self, sa: ServiceAccount) -> None:
+        sa.status = "suspended"

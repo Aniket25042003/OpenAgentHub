@@ -476,6 +476,112 @@ class OrgActionResponse(BaseModel):
     team: str | None = None
 
 
+class ApiTokenInfo(BaseModel):
+    id: int
+    label: str
+    prefix: str
+    scopes: list[str]
+    organizationId: int | None = None
+    isServiceAccount: bool = False
+    createdAt: str
+    lastUsedAt: str | None = None
+    expiresAt: str | None = None
+    revoked: bool = False
+
+
+class ApiTokenCreateRequest(BaseModel):
+    label: str
+    scopes: list[str] = ["packages:read", "packages:publish"]
+    organizationId: int | None = None
+    isServiceAccount: bool = False
+    expiresInDays: int | None = None
+
+
+class ApiTokenCreateResponse(BaseModel):
+    id: int
+    token: str
+    prefix: str
+    scopes: list[str]
+
+
+class ApiTokensResponse(BaseModel):
+    items: list[ApiTokenInfo]
+
+
+class ApiTokenRotateRequest(BaseModel):
+    expiresInDays: int | None = None
+
+
+class ServiceAccountCreateRequest(BaseModel):
+    name: str
+    role: str = "maintainer"
+
+
+class ServiceAccountTokenRequest(BaseModel):
+    label: str
+    scopes: list[str] = ["packages:read", "packages:publish"]
+    expiresInDays: int | None = None
+
+
+class ServiceAccountItem(BaseModel):
+    id: int
+    name: str
+    username: str
+    role: str
+    status: str
+
+
+class ServiceAccountsResponse(BaseModel):
+    items: list[ServiceAccountItem]
+
+
+class AuditEntry(BaseModel):
+    id: int
+    actorId: int | None = None
+    actorUsername: str | None = None
+    action: str
+    targetType: str | None = None
+    targetId: int | None = None
+    namespace: str | None = None
+    name: str | None = None
+    detail: dict[str, Any] = {}
+    createdAt: str
+
+    @classmethod
+    def from_event(cls, event) -> "AuditEntry":
+        return cls(
+            id=event.id,
+            actorId=event.actor_id,
+            action=event.action,
+            targetType=event.target_type,
+            targetId=event.target_id,
+            namespace=event.namespace,
+            name=event.name,
+            detail=event.detail or {},
+            createdAt=dt_iso(event.created_at),
+        )
+
+
+class AuditLogResponse(BaseModel):
+    items: list[AuditEntry]
+    nextCursor: int | None = None
+    retentionDays: int | None = None
+    oldestEventAt: str | None = None
+
+
+class OrgQuotaUpdateRequest(BaseModel):
+    limits: dict[str, int] | None = None
+    ttlDays: int = 30
+
+
+class OrgQuotaResponse(BaseModel):
+    limits: dict[str, int]
+    usage: dict[str, int]
+    forecast: dict[str, int | None]
+    resetDate: str
+    overridesExpireAt: str | None = None
+
+
 def dt_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         return dt.isoformat() + "Z"

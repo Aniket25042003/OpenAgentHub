@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
 from app.identity.models import (
+    ApiToken,
     LoginTransaction,
     Session,
     SigningKey,
@@ -240,5 +241,84 @@ class LoginTransactionRepository:
             )
         ).scalar_one_or_none()
 
+    async def mark_completed(self, row: LoginTransaction) -> None:
+        row.completed_at = utcnow()
+
     async def mark_issued(self, row: LoginTransaction) -> None:
         row.issued_at = utcnow()
+
+
+class ApiTokenRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(
+        self,
+        *,
+        user_id: int,
+        token_hash: str,
+        prefix: str,
+        label: str,
+        scopes: str,
+        organization_id: int | None,
+        is_service_account: bool,
+        expires_at: datetime | None,
+    ) -> ApiToken:
+        row = ApiToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            prefix=prefix,
+            label=label,
+            scopes=scopes,
+            organization_id=organization_id,
+            is_service_account=is_service_account,
+            expires_at=expires_at,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def by_token_hash(self, token_hash: str) -> ApiToken | None:
+        return (
+            await self.session.execute(
+                select(ApiToken).where(ApiToken.token_hash == token_hash)
+            )
+        ).scalar_one_or_none()
+
+    async def by_id(self, token_id: int) -> ApiToken | None:
+        return await self.session.get(ApiToken, token_id)
+
+    async def for_user(self, user_id: int) -> list[ApiToken]:
+        return (
+            (
+                await self.session.execute(
+                    select(ApiToken)
+                    .where(ApiToken.user_id == user_id)
+                    .order_by(ApiToken.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    def touch(self, row: ApiToken, now: datetime) -> None:
+        row.last_used_at = now
+
+    def revoke(self, row: ApiToken) -> None:
+        row.revoked_at = utcnow()
+
+    def rotate(self, row: ApiToken, token_hash: str, prefix: str, expires_at: datetime | None) -> ApiToken:
+        fresh = ApiToken(
+            user_id=row.user_id,
+            token_hash=token_hash,
+            prefix=prefix,
+            label=row.label,
+            scopes=row.scopes,
+            organization_id=row.organization_id,
+            is_service_account=row.is_service_account,
+            expires_at=expires_at,
+            rotated_from_id=row.id,
+        )
+        self.session.add(fresh)
+        row.revoked_at = utcnow()
+        return fresh
