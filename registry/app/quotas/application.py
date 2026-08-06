@@ -64,12 +64,24 @@ def default_limits() -> dict[str, int]:
 
 
 async def effective_limits(session: AsyncSession, organization_id: int) -> tuple[dict[str, int], datetime | None]:
-    """Merge registry defaults with the org's active overrides.
+    """Merge the org's billing plan entitlements with active overrides.
 
-    Returns the effective limit dict (all dimensions) and the override expiry
-    (``None`` when no override row exists or it has expired).
+    Base limits come from the billing subscription's effective entitlements
+    (M-8.10); when no subscription row exists the registry defaults apply.
+    Returns the effective limit dict (all quota dimensions) and the override
+    expiry (``None`` when no override row exists or it has expired).
     """
+    from app.billing.application import effective_entitlements, subscription_for
+
     limits = default_limits()
+    try:
+        sub = await subscription_for(session, organization_id)
+        entitle = effective_entitlements(sub)
+        for dim in QUOTA_DIMENSIONS:
+            if dim in entitle:
+                limits[dim] = int(entitle[dim])
+    except Exception:  # noqa: BLE001 - fall back to defaults on any billing error
+        pass
     row = (
         await session.execute(select(OrgQuota).where(OrgQuota.organization_id == organization_id))
     ).scalar_one_or_none()
@@ -172,7 +184,16 @@ async def enforce_publish_quota(
 
     Called inside the publish transaction; the newly-inserted version row is
     part of the same transaction, so the count checks see it via ``flush``.
+    Billing-blocked orgs (past_due/suspended/canceled) are refused first;
+    existing packages and downloads are never affected (M-8.10).
     """
+    from app.billing.application import BillingBlocked, enforce_write_allowed
+
+    try:
+        await enforce_write_allowed(session, organization_id)
+    except BillingBlocked:
+        raise
+
     limits, _ = await effective_limits(session, organization_id)
 
     versions = await org_version_count(session, organization_id)

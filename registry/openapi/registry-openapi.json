@@ -593,6 +593,137 @@
         "title": "AuditLogResponse",
         "type": "object"
       },
+      "BillingPlanRequest": {
+        "properties": {
+          "plan": {
+            "title": "Plan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan"
+        ],
+        "title": "BillingPlanRequest",
+        "type": "object"
+      },
+      "BillingRetention": {
+        "properties": {
+          "auditRetentionDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auditretentiondays"
+          },
+          "cancelRetentionDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelretentiondays"
+          }
+        },
+        "title": "BillingRetention",
+        "type": "object"
+      },
+      "BillingTransitionRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "BillingTransitionRequest",
+        "type": "object"
+      },
+      "BillingWebhookEventSummary": {
+        "properties": {
+          "eventId": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "eventType": {
+            "title": "Eventtype",
+            "type": "string"
+          },
+          "processedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processedat"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "receivedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receivedat"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "eventId",
+          "eventType",
+          "status"
+        ],
+        "title": "BillingWebhookEventSummary",
+        "type": "object"
+      },
+      "BillingWebhookListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BillingWebhookEventSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BillingWebhookListResponse",
+        "type": "object"
+      },
       "Body_publish_version_api_v1_agents__namespace___name__versions__version__put": {
         "properties": {
           "archive": {
@@ -1194,6 +1325,115 @@
           "slug"
         ],
         "title": "OrgActionResponse",
+        "type": "object"
+      },
+      "OrgBillingResponse": {
+        "properties": {
+          "canceledAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canceledat"
+          },
+          "entitlements": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Entitlements",
+            "type": "object"
+          },
+          "forecast": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Forecast",
+            "type": "object"
+          },
+          "graceEndsAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graceendsat"
+          },
+          "limits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Limits",
+            "type": "object"
+          },
+          "plan": {
+            "title": "Plan",
+            "type": "string"
+          },
+          "planName": {
+            "title": "Planname",
+            "type": "string"
+          },
+          "resetDate": {
+            "title": "Resetdate",
+            "type": "string"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/BillingRetention"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supportLevel": {
+            "title": "Supportlevel",
+            "type": "string"
+          },
+          "trialEndsAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trialendsat"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Usage",
+            "type": "object"
+          }
+        },
+        "required": [
+          "plan",
+          "planName",
+          "status",
+          "supportLevel",
+          "entitlements",
+          "limits",
+          "usage",
+          "forecast",
+          "resetDate",
+          "retention"
+        ],
+        "title": "OrgBillingResponse",
         "type": "object"
       },
       "OrgCreateRequest": {
@@ -2655,6 +2895,64 @@
           "visibility"
         ],
         "title": "VisibilityUpdateRequest",
+        "type": "object"
+      },
+      "WebhookEventRequest": {
+        "properties": {
+          "eventId": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "eventType": {
+            "title": "Eventtype",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Payload",
+            "type": "object"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "eventId",
+          "eventType"
+        ],
+        "title": "WebhookEventRequest",
+        "type": "object"
+      },
+      "WebhookEventResponse": {
+        "properties": {
+          "duplicate": {
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "eventId": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "duplicate",
+          "eventId"
+        ],
+        "title": "WebhookEventResponse",
         "type": "object"
       },
       "YankRequest": {
@@ -4787,6 +5085,267 @@
           }
         },
         "summary": "Org Audit Log"
+      }
+    },
+    "/api/v1/orgs/{slug}/billing": {
+      "get": {
+        "operationId": "get_org_billing_api_v1_orgs__slug__billing_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgBillingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Org Billing"
+      }
+    },
+    "/api/v1/orgs/{slug}/billing/plan": {
+      "put": {
+        "operationId": "change_org_plan_api_v1_orgs__slug__billing_plan_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingPlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgBillingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Org Plan"
+      }
+    },
+    "/api/v1/orgs/{slug}/billing/transitions": {
+      "post": {
+        "operationId": "transition_billing_api_v1_orgs__slug__billing_transitions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgBillingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transition Billing"
+      }
+    },
+    "/api/v1/orgs/{slug}/billing/usage-export": {
+      "get": {
+        "operationId": "export_org_usage_api_v1_orgs__slug__billing_usage_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Org Usage"
+      }
+    },
+    "/api/v1/orgs/{slug}/billing/webhooks": {
+      "get": {
+        "operationId": "list_billing_webhooks_api_v1_orgs__slug__billing_webhooks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingWebhookListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Billing Webhooks"
+      },
+      "post": {
+        "description": "Idempotent payment-provider webhook ingress.\n\nNo card data is accepted or stored; payloads are event metadata used to\nmove the subscription lifecycle. The route is anonymous by design but\nfail-closed: it requires ``REGISTRY_BILLING_WEBHOOK_SECRET`` to be set\n(HMAC-SHA256 over the raw body) and is rate-limited per IP, never keyed\non attacker-controlled event data.",
+        "operationId": "ingest_webhook_api_v1_orgs__slug__billing_webhooks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookEventResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Webhook"
       }
     },
     "/api/v1/orgs/{slug}/invitations": {

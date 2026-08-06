@@ -6,7 +6,7 @@ import pytest
 
 APP_ROOT = pathlib.Path(__file__).resolve().parents[1] / "app"
 
-MODULES = ("identity", "registry", "security_review", "organizations", "publisher", "entitlements", "audit", "outbox", "workers")
+MODULES = ("identity", "registry", "security_review", "organizations", "publisher", "entitlements", "audit", "outbox", "workers", "billing", "quotas")
 
 
 def _imports(module_path: pathlib.Path) -> list[str]:
@@ -128,6 +128,8 @@ def test_module_tables_are_owned_by_their_module():
         "audit": ("audit_events",),
         "outbox": ("outbox_events", "queue_jobs"),
         "organizations": ("organizations", "organization_members", "teams", "team_members", "invitations", "service_accounts"),
+        "quotas": ("org_quotas", "org_monthly_usage"),
+        "billing": ("organization_subscriptions", "billing_webhook_events"),
     }
     for module, tables in ownership.items():
         models_path = APP_ROOT / module / "models.py"
@@ -139,25 +141,30 @@ def test_module_tables_are_owned_by_their_module():
 ALLOWED_CROSS_MODULE = {
     "security_review/adapters.py": {"registry"},
     "registry/access.py": {"organizations", "identity"},
-    "registry/application.py": {"security_review", "audit", "outbox", "identity", "entitlements", "organizations"},
+    "registry/application.py": {"security_review", "audit", "outbox", "identity", "entitlements", "organizations", "quotas"},
     "registry/repositories.py": {"organizations"},
-    "registry/routes.py": {"identity", "entitlements"},
+    "registry/routes.py": {"identity", "entitlements", "quotas", "billing"},
     "registry/catalog.py": {"registry", "identity"},
+    "registry/downloads.py": {"quotas"},
     "publisher/application.py": {"registry", "identity", "audit"},
     "publisher/routes.py": {"identity"},
     "entitlements/application.py": {"audit", "identity"},
     "identity/application.py": {"audit", "organizations"},
     "identity/sessions.py": {"audit"},
-    "identity/api_tokens.py": {"audit", "organizations"},
-    "organizations/application.py": {"audit", "identity"},
+"identity/api_tokens.py": {"audit", "organizations"},
+    "organizations/application.py": {"audit", "identity", "billing", "quotas"},
     "organizations/routes.py": {"identity"},
     "quotas/models.py": {"db"},
-    "quotas/application.py": {"audit", "identity", "organizations", "registry", "config", "db"},
+    "quotas/application.py": {"audit", "identity", "organizations", "registry", "config", "db", "billing"},
     "quotas/routes.py": {"identity", "organizations", "ratelimit", "config", "db"},
+    "billing/models.py": {"db"},
+    "billing/application.py": {"audit", "organizations", "config", "db", "quotas", "outbox"},
+    "billing/routes.py": {"identity", "organizations", "ratelimit", "config", "db"},
+    "billing/plans.py": {"config"},
     "db.py": {"registry"},
     "workers/scan.py": {"security_review", "outbox"},
     "workers/notifications.py": {"outbox"},
-    "workers/billing.py": {"outbox"},
+    "workers/billing.py": {"outbox", "billing"},
     "workers/maintenance.py": {"outbox"},
 }
 

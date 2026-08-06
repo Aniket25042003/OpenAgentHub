@@ -90,6 +90,9 @@ async def create_organization(
     org = await repo.create(
         slug=slug, display_name=display_name.strip(), owner_id=user.id
     )
+    from app.billing.application import ensure_subscription
+
+    await ensure_subscription(session, org.id)
     await AuditRepository(session).record(
         actor_id=user.id,
         action="organization.created",

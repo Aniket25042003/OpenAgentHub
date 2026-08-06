@@ -42,6 +42,7 @@ registry/
 │   ├── organizations/    orgs, roles, teams, invitations, service accounts, audit-log APIs
 │   ├── entitlements/     publish quotas + rate limits (billing lands later)
 │   ├── quotas/           org storage/download/member quotas, overrides with expiry
+│   ├── billing/          plans + entitlements, subscription lifecycle, idempotent webhooks, usage export
 │   ├── audit/            append-only audit events
 │   ├── outbox/           outbox events, durable queue, dispatcher, worker base
 │   └── workers/          scan / notifications / billing / maintenance entrypoints
@@ -74,6 +75,14 @@ registry/
 | `REGISTRY_PUBLISH_PER_IP_PER_HOUR` | 120 | in-memory per-IP publish throttle |
 | `REGISTRY_RESERVED_NAMESPACE_PREFIXES` | `openagenthub-,oah-,github-,...` | reserved namespace names |
 | `REGISTRY_OUTBOX_POLL_INTERVAL_SECONDS` | 1.0 | outbox dispatcher poll interval |
+| `REGISTRY_ORG_QUOTA_DEFAULT_*` | 100/500/5GiB/100GiB/25/10 | free-plan quota defaults (packages/versions/storage/bandwidth/members/service accounts) |
+| `REGISTRY_ORG_AUDIT_RETENTION_DEFAULT_DAYS` | 90 | audit-log retention for the free plan |
+| `REGISTRY_BILLING_TRIAL_DAYS` | 14 | trial duration before expiry |
+| `REGISTRY_BILLING_GRACE_DAYS` | 7 | grace window after a payment failure |
+| `REGISTRY_BILLING_PAST_DUE_DAYS` | 14 | past-due window before suspension |
+| `REGISTRY_BILLING_CANCEL_RETENTION_DAYS` | 30 | artifacts retained after cancellation (never destroyed by transitions) |
+| `REGISTRY_BILLING_WEBHOOK_SECRET` | "" | when set, `POST .../billing/webhooks` requires `X-OpenAgentHub-Signature` (HMAC-SHA256) |
+| `REGISTRY_BILLING_LAUNCHABLE_PLANS` | `free` | comma-separated plans switchable via the plan endpoint |
 
 ## API surface (see [api.md](api.md) for the contract)
 
@@ -91,6 +100,11 @@ registry/
 - `POST /api/v1/auth/github` (OAuth code → JWT)
 - `POST /api/v1/keys`, `DELETE /api/v1/keys/{id}` (register/revoke signing key)
 - `GET /api/v1/me` (current user, keys, role/status)
+- `GET /api/v1/orgs/{slug}/quota`, `PUT /api/v1/orgs/{slug}/quota` (usage snapshot + owner/admin overrides with TTL)
+- `GET /api/v1/orgs/{slug}/billing` (plan, status, entitlements, usage, retention),
+  `POST /orgs/{slug}/billing/transitions` (owner/admin/billing_manager lifecycle control),
+  `PUT /orgs/{slug}/billing/plan`, `GET /orgs/{slug}/billing/usage-export` (CSV),
+  `POST /orgs/{slug}/billing/webhooks` (idempotent, HMAC-signed provider events)
 - `GET /health` (liveness), `GET /ready` (dependency status), `GET /metrics`
   (counters), `GET /openapi.json` (contract; snapshot in `openapi/`)
 

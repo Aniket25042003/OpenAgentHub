@@ -582,6 +582,62 @@ class OrgQuotaResponse(BaseModel):
     overridesExpireAt: str | None = None
 
 
+class BillingTransitionRequest(BaseModel):
+    status: str
+    reason: str | None = None
+
+
+class BillingPlanRequest(BaseModel):
+    plan: str
+
+
+class BillingRetention(BaseModel):
+    auditRetentionDays: int | None = None
+    cancelRetentionDays: int | None = None
+
+
+class OrgBillingResponse(BaseModel):
+    plan: str
+    planName: str
+    status: str
+    supportLevel: str
+    entitlements: dict[str, int]
+    limits: dict[str, int]
+    usage: dict[str, int]
+    forecast: dict[str, int | None]
+    resetDate: str
+    trialEndsAt: str | None = None
+    graceEndsAt: str | None = None
+    canceledAt: str | None = None
+    retention: BillingRetention
+
+
+class WebhookEventRequest(BaseModel):
+    provider: str
+    eventId: str
+    eventType: str
+    payload: dict[str, Any] = {}
+
+
+class WebhookEventResponse(BaseModel):
+    duplicate: bool
+    eventId: str
+    status: str | None = None
+
+
+class BillingWebhookEventSummary(BaseModel):
+    provider: str
+    eventId: str
+    eventType: str
+    status: str
+    receivedAt: str | None = None
+    processedAt: str | None = None
+
+
+class BillingWebhookListResponse(BaseModel):
+    items: list[BillingWebhookEventSummary]
+
+
 def dt_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         return dt.isoformat() + "Z"

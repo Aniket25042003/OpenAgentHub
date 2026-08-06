@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +31,7 @@ class DurableQueue:
         self.max_attempts = max_attempts
         self.backoff_base_seconds = backoff_base_seconds
 
-    async def enqueue(self, session: AsyncSession, job_type: str, payload: dict, *, dedupe_key: str, schema_version: int = 1) -> bool:
+    async def enqueue(self, session: AsyncSession, job_type: str, payload: dict, *, dedupe_key: str, schema_version: int = 1, run_at: datetime | None = None) -> bool:
         existing = (
             await session.execute(
                 select(QueueJob.id).where(
@@ -49,6 +49,7 @@ class DurableQueue:
             schema_version=schema_version,
             dedupe_key=dedupe_key,
             max_attempts=self.max_attempts,
+            next_attempt_at=run_at or utcnow(),
         )
         session.add(job)
         await session.flush()
