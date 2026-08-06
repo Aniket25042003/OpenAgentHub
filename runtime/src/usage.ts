@@ -243,12 +243,12 @@ export class UsageStore {
     const ids = new Set<string>();
     if (opts.olderThanDays !== undefined && opts.olderThanDays >= 0) {
       const cutoff = new Date(Date.now() - opts.olderThanDays * 86_400_000).toISOString();
-      for (const row of this.db.prepare("SELECT run_id FROM runs WHERE created_at < ?").all(cutoff)) {
+      for (const row of this.db.prepare("SELECT run_id FROM runs WHERE created_at < ? AND state NOT IN ('starting','running','stopping')").all(cutoff)) {
         ids.add((row as { run_id: string }).run_id);
       }
     }
     if (opts.keep !== undefined && opts.keep >= 0) {
-      for (const row of this.db.prepare("SELECT run_id FROM runs ORDER BY created_at DESC LIMIT -1 OFFSET ?").all(opts.keep)) {
+      for (const row of this.db.prepare("SELECT run_id FROM runs WHERE state NOT IN ('starting','running','stopping') ORDER BY created_at DESC LIMIT -1 OFFSET ?").all(opts.keep)) {
         ids.add((row as { run_id: string }).run_id);
       }
     }
