@@ -54,7 +54,7 @@ export class ControlPlaneDisabledError extends Error {}
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const CLI_ROOT = findCliRoot(here);
-const BIN_PATH = join(CLI_ROOT, "bin", "run.js");
+export const BIN_PATH = join(CLI_ROOT, "bin", "run.js");
 const DASHBOARD_SERVER_PATH = join(CLI_ROOT, "dashboard", "server.js");
 const PACKAGE_JSON_PATH = join(CLI_ROOT, "package.json");
 

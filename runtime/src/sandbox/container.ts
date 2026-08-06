@@ -74,6 +74,7 @@ export class ContainerSandbox implements Sandbox {
       "oah.version": this.spec.manifest.version,
       "oah.sandbox": "container",
       "oah.run_id": this.spec.runId ?? "unknown",
+      "oah.interface": this.spec.interfaceName ?? "cli",
       "oah.digest": this.spec.packageDigest ?? "unknown",
     };
     for (const [k, v] of Object.entries(labels)) flags.push("--label", `${k}=${v}`);
@@ -129,10 +130,10 @@ export class ContainerSandbox implements Sandbox {
 
     const tag = imageTag(this.spec.manifest.runtime.language);
     try {
-      execFileSync("docker", ["image", "inspect", tag], { stdio: "ignore" });
+      execFileSync("docker", ["image", "inspect", tag], { stdio: "ignore", timeout: 10_000 });
     } catch {
       try {
-        execFileSync("docker", ["pull", this.image], { stdio: "inherit" });
+        execFileSync("docker", ["pull", this.image], { stdio: "inherit", timeout: 120_000 });
       } catch {
         await this.cleanup();
         throw new Error(`failed to pull image ${this.image}; check network access and Docker configuration`);
@@ -147,7 +148,7 @@ export class ContainerSandbox implements Sandbox {
       if (!this.spec.network) {
         throw new Error("agent declares dependencies but network permission was not granted");
       }
-      execFileSync("docker", ["volume", "create", this.volume], { stdio: "ignore" });
+      execFileSync("docker", ["volume", "create", this.volume], { stdio: "ignore", timeout: 10_000 });
       const installCmd =
         lang === "python"
           ? `pip install --no-cache-dir --target /deps ${deps.pip!.map(quote).join(" ")}`
@@ -156,7 +157,7 @@ export class ContainerSandbox implements Sandbox {
         execFileSync(
           "docker",
           ["run", ...this.baseFlags(), ...this.envFlags(), "--volume", `${this.volume}:/deps`, this.image, "/bin/sh", "-c", installCmd],
-          { stdio: "inherit" },
+          { stdio: "inherit", timeout: 300_000 },
         );
       } catch (err) {
         await this.cleanup();
@@ -211,6 +212,7 @@ export class ContainerSandbox implements Sandbox {
             }, opts.timeoutMs)
           : undefined;
         child.stdout.on("data", (d: Buffer) => {
+          if (opts.streamOutput) process.stdout.write(d);
           if (stdout.length < MAX_OUTPUT_BYTES) {
             stdout += d.toString().slice(0, MAX_OUTPUT_BYTES - stdout.length);
             if (stdout.length >= MAX_OUTPUT_BYTES) truncatedOut = true;
@@ -219,6 +221,7 @@ export class ContainerSandbox implements Sandbox {
           }
         });
         child.stderr.on("data", (d: Buffer) => {
+          if (opts.streamOutput) process.stderr.write(d);
           if (stderr.length < MAX_OUTPUT_BYTES) {
             stderr += d.toString().slice(0, MAX_OUTPUT_BYTES - stderr.length);
             if (stderr.length >= MAX_OUTPUT_BYTES) truncatedErr = true;

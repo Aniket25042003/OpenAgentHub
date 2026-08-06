@@ -21,6 +21,7 @@ export interface RunAgentOptions {
   extraSecrets?: Record<string, string>;
   timeoutMs?: number;
   interactive?: boolean;
+  streamOutput?: boolean;
   reviewStatus?: string;
   statusFresh?: boolean;
   sandboxOverride?: SandboxOverride | null;
@@ -117,6 +118,7 @@ export class AgentRuntime {
         user: process.env.USER ?? "user",
         host: process.env.HOSTNAME ?? "localhost",
         runId: opts.runId,
+        interfaceName: iface,
         packageDigest: opts.archiveDigest,
       });
     } else {
@@ -140,7 +142,7 @@ export class AgentRuntime {
     }
 
     const command = this.commandFor(manifest, iface);
-    const runOpts: RunOptions = { command, input: opts.input, timeoutMs: opts.timeoutMs };
+    const runOpts: RunOptions = { command, input: opts.input, timeoutMs: opts.timeoutMs, streamOutput: opts.streamOutput };
 
     let result: RunResult;
     if (opts.interactive) {

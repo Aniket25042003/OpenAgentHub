@@ -4,6 +4,8 @@ export interface RunOptions {
   command: string;
   input?: string;
   timeoutMs?: number;
+  /** Forward the child's stdout/stderr to this process's stdout/stderr as it arrives. */
+  streamOutput?: boolean;
 }
 
 export interface RunResult {
@@ -33,5 +35,6 @@ export interface SandboxSpec {
   user: string;
   host: string;
   runId?: string;
+  interfaceName?: string;
   packageDigest?: string;
 }
