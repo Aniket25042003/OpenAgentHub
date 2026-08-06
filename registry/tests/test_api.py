@@ -72,6 +72,10 @@ async def test_download_increments_count(client):
     archive, sig, _, _ = signed_package("acme", "counter", "0.1.0")
     await publish(client, token, "acme", "counter", "0.1.0", archive, sig)
     await client.get("/api/v1/agents/acme/counter/versions/0.1.0/archive")
+    from app.registry.downloads import get_download_buffer
+
+    assert get_download_buffer().pending == 1
+    await get_download_buffer().flush()
     detail = (await client.get("/api/v1/agents/acme/counter/versions/0.1.0")).json()
     assert detail["downloadCount"] == 1
 

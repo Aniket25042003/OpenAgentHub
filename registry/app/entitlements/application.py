@@ -56,22 +56,23 @@ class SlidingWindowRateLimiter:
         self._events.clear()
 
 
-_PUBLISH_LIMITER: SlidingWindowRateLimiter | None = None
-
-
-def _publish_limiter() -> SlidingWindowRateLimiter:
-    global _PUBLISH_LIMITER
-    if _PUBLISH_LIMITER is None:
-        settings = get_settings()
-        _PUBLISH_LIMITER = SlidingWindowRateLimiter(settings.publish_per_ip_per_hour, 3600)
-    return _PUBLISH_LIMITER
-
-
 def check_publish_rate(ip: str) -> None:
-    retry = _publish_limiter().check(ip)
+    """Publish writes are rate-limited per source IP via the shared limiter.
+
+    Delegating to the app-level rate limiter keeps publish counters on the same
+    shared backend as every other limit (multi-instance deployments see one
+    global counter rather than one per process).
+    """
+    from app.ratelimit import RateLimitExceeded, get_rate_limiter
+    from app.config import get_settings
+
+    settings = get_settings()
+    retry = get_rate_limiter().check(f"pub:{ip}", settings.publish_per_ip_per_hour, 3600)
     if retry is not None:
         raise QuotaExceeded("publish rate limit reached for this address", retry_after=retry)
 
 
 def reset_publish_limits() -> None:
-    _publish_limiter().reset()
+    from app.ratelimit import reset_rate_limiter
+
+    reset_rate_limiter()

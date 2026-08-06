@@ -1,9 +1,9 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased
 
-from app.registry.models import Agent, AgentVersion, Namespace, NamespaceMember, VersionReviewEvent
-from app.registry.semver import semver_key
+from app.registry.models import BLOCKED_REVIEW_STATUSES, Agent, AgentVersion, CatalogMeta, Namespace, NamespaceMember, VersionReviewEvent
+from app.registry.semver import semver_key, sort_key
 
 
 class NamespaceRepository:
@@ -110,6 +110,41 @@ class AgentRepository:
                 latest[v.agent_id] = v
         return latest
 
+    async def latest_visible_versions(self) -> dict[int, AgentVersion]:
+        """Latest *visible* version per agent from a single SQL window query.
+
+        Visibility excludes yanked versions and versions whose review status
+        blocks them. Ordering uses the stored collateable ``sort_key`` so the
+        database (not Python) resolves "latest".
+        """
+        visible = ~AgentVersion.yanked & ~AgentVersion.review_status.in_(BLOCKED_REVIEW_STATUSES)
+        rank = func.row_number().over(
+            partition_by=AgentVersion.agent_id,
+            order_by=(AgentVersion.sort_key.desc(), AgentVersion.published_at.desc(), AgentVersion.id.desc()),
+        ).label("rn")
+        sub = select(AgentVersion, rank).where(visible).subquery()
+        latest_alias = aliased(AgentVersion, sub)
+        stmt = select(latest_alias).where(sub.c.rn == 1)
+        return {v.agent_id: v for v in (await self.session.execute(stmt)).scalars().all()}
+
+
+class CatalogRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def watermark(self) -> str:
+        row = (await self.session.execute(select(CatalogMeta).where(CatalogMeta.id == 1))).scalar_one_or_none()
+        return row.updated_at.isoformat() if row is not None else ""
+
+    async def bump(self) -> None:
+        from app.db import utcnow
+
+        row = (await self.session.execute(select(CatalogMeta).where(CatalogMeta.id == 1))).scalar_one_or_none()
+        if row is None:
+            row = CatalogMeta(id=1)
+            self.session.add(row)
+        row.updated_at = utcnow()
+
 
 class VersionRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -170,6 +205,7 @@ class VersionRepository:
         ver = AgentVersion(
             agent_id=agent_id,
             version=version,
+            sort_key=sort_key(version),
             manifest=manifest,
             sha256=sha256,
             archive_name=archive_name,
@@ -188,9 +224,6 @@ class VersionRepository:
             version.security_findings = findings
             return True
         return False
-
-    async def increment_download(self, version: AgentVersion) -> None:
-        version.download_count += 1
 
     def set_yanked(self, version: AgentVersion, yanked: bool) -> bool:
         if version.yanked == yanked:

@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -9,6 +9,8 @@ from app.config import get_settings
 from app.db import dispose_db, init_db, ping_db
 from app.identity.routes import router as identity_router
 from app.outbox.dispatcher import OutboxDispatcher
+from app.ratelimit import RateLimitExceeded
+from app.registry.downloads import get_download_buffer
 from app.registry.routes import router as registry_router
 from app.telemetry import configure_logging, get_logger, metrics, request_metrics_middleware
 
@@ -22,8 +24,13 @@ async def lifespan(app: FastAPI):
     dispatcher = OutboxDispatcher(poll_interval=get_settings().outbox_poll_interval_seconds)
     dispatcher.start()
     app.state.dispatcher = dispatcher
-    log.info("registry started with outbox dispatcher")
+    settings = get_settings()
+    buffer = get_download_buffer(interval_seconds=settings.download_flush_seconds)
+    buffer.start()
+    app.state.download_buffer = buffer
+    log.info("registry started with outbox dispatcher and download buffer")
     yield
+    await buffer.stop(flush=True)
     await dispatcher.stop()
     await dispose_db()
 
@@ -40,6 +47,15 @@ def create_app() -> FastAPI:
     )
     app.include_router(identity_router)
     app.include_router(registry_router)
+
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+        headers = {"Retry-After": str(exc.retry_after)}
+        if exc.limit is not None:
+            headers["X-RateLimit-Limit"] = str(exc.limit)
+        if exc.window_seconds is not None:
+            headers["X-RateLimit-Window"] = str(exc.window_seconds)
+        return JSONResponse(status_code=429, content={"detail": str(exc)}, headers=headers)
 
     @app.get("/health")
     async def health():

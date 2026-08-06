@@ -62,6 +62,7 @@ class AgentVersion(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
     version: Mapped[str] = mapped_column(String(64))
+    sort_key: Mapped[str] = mapped_column(String(128), default="", index=True)
     manifest: Mapped[dict] = mapped_column(JSONType)
     sha256: Mapped[str] = mapped_column(String(64))
     archive_name: Mapped[str] = mapped_column(String(255))
@@ -83,6 +84,20 @@ class AgentVersion(Base):
     reviews: Mapped[list["VersionReviewEvent"]] = relationship(
         back_populates="version", cascade="all, delete-orphan", order_by="VersionReviewEvent.created_at"
     )
+
+
+class CatalogMeta(Base):
+    """Single-row watermark bumped inside every catalog-affecting transaction.
+
+    The catalog cache is keyed on this watermark, so a committed publish,
+    review, or yank invalidates cached catalog payloads without a separate
+    invalidation channel.
+    """
+
+    __tablename__ = "catalog_meta"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class VersionReviewEvent(Base):

@@ -66,6 +66,52 @@ export interface SecurityReportSummary {
   findings: string[];
 }
 
+export interface CatalogItem {
+  namespace: string;
+  name: string;
+  version: string;
+  digest: string;
+  author: string;
+  description: string;
+  license: string;
+  framework?: string;
+  models: string[];
+  tags: string[];
+  runtime?: string;
+  interfaces: string[];
+  permissions: string[];
+  secrets: string[];
+  downloads: number;
+  publisher: string;
+  signerVerified: boolean;
+  reviewStatus: string;
+  securityStatus: string;
+  yanked: boolean;
+  publishedAt: string;
+  reviewedAt?: string;
+}
+
+export interface CatalogOptions {
+  q?: string;
+  framework?: string;
+  models?: string;
+  tags?: string;
+  reviewStatus?: string;
+  securityStatus?: string;
+  permission?: string;
+  runtime?: string;
+  publisherStatus?: "verified" | "unverified";
+  cursor?: string;
+  limit?: number;
+}
+
+export interface CatalogPage {
+  schemaVersion: number;
+  watermark: string;
+  items: CatalogItem[];
+  nextCursor?: string;
+}
+
 const DEFAULT_TIMEOUT = 30_000;
 const MAX_DOWNLOAD_BYTES = 250 * 1024 * 1024;
 
@@ -116,6 +162,23 @@ export class RegistryClient {
     const res = await this.request(`/api/v1/agents?${params.toString()}`);
     const data = (await res.json()) as { items: AgentSummary[] };
     return data.items;
+  }
+
+  async catalog(opts: CatalogOptions = {}): Promise<CatalogPage> {
+    const params = new URLSearchParams();
+    if (opts.q) params.set("q", opts.q);
+    if (opts.framework) params.set("framework", opts.framework);
+    if (opts.models) params.set("models", opts.models);
+    if (opts.tags) params.set("tags", opts.tags);
+    if (opts.reviewStatus) params.set("review_status", opts.reviewStatus);
+    if (opts.securityStatus) params.set("security_status", opts.securityStatus);
+    if (opts.permission) params.set("permission", opts.permission);
+    if (opts.runtime) params.set("runtime", opts.runtime);
+    if (opts.publisherStatus) params.set("publisher_status", opts.publisherStatus);
+    if (opts.cursor) params.set("cursor", opts.cursor);
+    if (opts.limit) params.set("limit", String(opts.limit));
+    const res = await this.request(`/api/v1/catalog?${params.toString()}`);
+    return (await res.json()) as CatalogPage;
   }
 
   async get(namespace: string, name: string): Promise<AgentSummary> {

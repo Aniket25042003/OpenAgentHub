@@ -60,6 +60,31 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _ensure_latest_version_columns()
+
+
+async def _ensure_latest_version_columns() -> None:
+    """Add and backfill ``agent_versions.sort_key`` on pre-existing databases.
+
+    ``create_all`` only creates tables that do not exist; a database created
+    before M-6 needs the sort key added (and recomputed) for SQL-side
+    latest-version selection. Both SQLite and PostgreSQL support ADD COLUMN.
+    """
+    from sqlalchemy import text
+
+    from app.registry.semver import sort_key
+
+    async with _engine.begin() as conn:
+        try:
+            await conn.execute(text("ALTER TABLE agent_versions ADD COLUMN sort_key VARCHAR(128)"))
+        except Exception:  # noqa: BLE001 — column already present
+            pass
+        rows = (await conn.execute(text("SELECT id, version FROM agent_versions WHERE sort_key IS NULL OR sort_key = ''"))).fetchall()
+        for version_id, version in rows:
+            await conn.execute(
+                text("UPDATE agent_versions SET sort_key = :key WHERE id = :id"),
+                {"key": sort_key(version), "id": version_id},
+            )
 
 
 async def reset_db() -> None:
