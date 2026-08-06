@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     download_flush_seconds: float = 60.0
     catalog_cache_ttl_seconds: int = 30
 
+    token_max_lifetime_days: int = 365
+    token_default_ttl_days: int = 90
+    token_max_per_account: int = 50
+    token_allowed_scopes: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         if self.cors_origins.strip() == "*":

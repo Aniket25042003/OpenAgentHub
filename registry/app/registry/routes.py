@@ -11,6 +11,7 @@ from app.ratelimit import RateLimitRule, enforce
 from app.entitlements.application import QuotaExceeded, check_publish_rate
 from app.identity.application import (
     require_active_user,
+    require_scope,
     resolve_cookie_reviewer_or_admin,
     resolve_optional_user,
 )
@@ -312,7 +313,7 @@ async def publish_version(
     request: Request,
     visibility: str = "public",
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_active_user),
+    user = Depends(require_scope("packages:publish")),
 ):
     _write_limits(request, user)
     try:
@@ -482,7 +483,7 @@ async def update_visibility(
     req: VisibilityUpdateRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_active_user),
+    user = Depends(require_scope("packages:manage")),
 ):
     _write_limits(request, user)
     try:
@@ -519,7 +520,7 @@ async def grant_access(
     req: GrantRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_active_user),
+    user = Depends(require_scope("packages:manage")),
 ):
     _write_limits(request, user)
     try:
@@ -541,7 +542,7 @@ async def revoke_access(
     req: GrantRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user = Depends(require_active_user),
+    user = Depends(require_scope("packages:manage")),
 ):
     _write_limits(request, user)
     try:

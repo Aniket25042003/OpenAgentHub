@@ -13,6 +13,7 @@ from app.organizations.models import ORG_ROLES, Organization, OrganizationMember
 from app.organizations.repositories import (
     InvitationRepository,
     OrganizationRepository,
+    ServiceAccountRepository,
     TeamRepository,
 )
 
@@ -487,3 +488,106 @@ async def remove_team_member(
         detail={"slug": slug, "team": team.name, "username": username},
     )
     return {"slug": slug, "team": team.name, "username": username}
+
+
+SERVICE_ACCOUNT_ROLES = tuple(r for r in ORG_ROLES if r != "owner")
+
+
+async def create_service_account(
+    session: AsyncSession, actor: User, slug: str, *, name: str, role: str
+) -> dict:
+    if not name.strip() or len(name.strip()) > 64:
+        raise OrganizationError("service account name is required (max 64 chars)")
+    if role not in SERVICE_ACCOUNT_ROLES:
+        raise OrganizationError(f"role must be one of {', '.join(SERVICE_ACCOUNT_ROLES)}")
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, actor.id), org)
+    if not (member.is_owner or member.role in ("administrator", "maintainer")):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    sa_repo = ServiceAccountRepository(session)
+    if await sa_repo.in_organization(org, name.strip()) is not None:
+        raise OrganizationConflict(f"service account '{name}' already exists")
+    from app.identity.models import User
+
+    user = await UserRepository(session).by_username(f"svc-{slug}-{name.strip().lower().replace(' ', '-')}")
+    if user is not None:
+        raise OrganizationConflict(f"a user for service account '{name}' already exists")
+    username = f"svc-{slug}-{name.strip().lower().replace(' ', '-')}"
+    identity = User(username=username, role="publisher")
+    session.add(identity)
+    await session.flush()
+    await org_repo.add_member(org, identity.id, role)
+    row = await sa_repo.create(organization=org, user_id=identity.id, name=name.strip(), created_by_id=actor.id)
+    await AuditRepository(session).record(
+        actor_id=actor.id,
+        action="organization.service_account.created",
+        target_type="service_account",
+        target_id=row.id,
+        detail={"slug": slug, "name": row.name, "role": role},
+    )
+    return {"slug": slug, "name": row.name, "role": role, "id": row.id}
+
+
+async def list_service_accounts(session: AsyncSession, user: User, slug: str) -> list[dict]:
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, user.id), org)
+    if not (member.is_owner or member.role in ("administrator", "maintainer")):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    rows = await ServiceAccountRepository(session).for_organization(org)
+    users = {
+        u.id: u
+        for u in await UserRepository(session).by_ids([r.user_id for r in rows])
+    }
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "status": r.status,
+            "username": users[r.user_id].username,
+            "role": (await org_repo.membership(org, r.user_id)).role if await org_repo.membership(org, r.user_id) else "read_only",
+        }
+        for r in rows
+    ]
+
+
+async def delete_service_account(
+    session: AsyncSession, actor: User, slug: str, sa_id: int
+) -> dict:
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.by_slug(slug)
+    if org is None:
+        raise OrganizationNotFound(f"organization '{slug}' not found")
+    member = _membership_or_raise(await org_repo.membership(org, actor.id), org)
+    if not (member.is_owner or member.role in ("administrator", "maintainer")):
+        raise OrganizationForbidden("requires owner, administrator, or maintainer role")
+    sa_repo = ServiceAccountRepository(session)
+    sa = await sa_repo.by_id(sa_id)
+    if sa is None or sa.organization_id != org.id:
+        raise OrganizationNotFound("service account not found")
+    from app.identity.repositories import ApiTokenRepository, UserRepository
+
+    membership = await org_repo.membership(org, sa.user_id)
+    if membership is not None:
+        await session.delete(membership)
+    tokens = await ApiTokenRepository(session).for_user(sa.user_id)
+    for token in tokens:
+        if token.revoked_at is None:
+            ApiTokenRepository(session).revoke(token)
+    identity = await UserRepository(session).by_id(sa.user_id)
+    if identity is not None:
+        UserRepository(session).update_status(identity, "suspended")
+    await session.delete(sa)
+    await AuditRepository(session).record(
+        actor_id=actor.id,
+        action="organization.service_account.deleted",
+        target_type="service_account",
+        target_id=sa.id,
+        detail={"slug": slug, "name": sa.name},
+    )
+    return {"slug": slug, "name": sa.name}

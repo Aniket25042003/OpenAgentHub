@@ -21,6 +21,7 @@ class User(Base):
 
     keys: Mapped[list["SigningKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    api_tokens: Mapped[list["ApiToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserAgreement(Base):
@@ -75,6 +76,36 @@ class SigningKey(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     user: Mapped[User] = relationship(back_populates="keys")
+
+
+class ApiToken(Base):
+    """Long-lived, revocable API credential for programmatic access.
+
+    Only ``token_hash`` is stored; the raw token is shown once at creation. A
+    token carries a comma-separated ``scopes`` list (e.g. ``packages:read``);
+    scopes may be narrowed to a single organization via ``organization_id``.
+    ``last_used_at``/``revoked_at`` support independent lifecycle controls.
+    """
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    prefix: Mapped[str] = mapped_column(String(24), index=True)
+    label: Mapped[str] = mapped_column(String(64), default="")
+    scopes: Mapped[str] = mapped_column(String(255), default="packages:read")
+    organization_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizations.id"), nullable=True, index=True
+    )
+    is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    rotated_from_id: Mapped[int | None] = mapped_column(ForeignKey("api_tokens.id"), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="api_tokens")
 
 
 class LoginTransaction(Base):

@@ -35,6 +35,9 @@ class Organization(Base):
     invitations: Mapped[list["Invitation"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
+    service_accounts: Mapped[list["ServiceAccount"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
 
 
 class OrganizationMember(Base):
@@ -121,3 +124,29 @@ class Invitation(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     organization: Mapped[Organization] = relationship(back_populates="invitations")
+
+
+class ServiceAccount(Base):
+    """Organization-owned CI credential identity (M-8.7).
+
+    Service accounts are tied to the organization, not to an employee's
+    personal account: they are created by org maintainers, hold their own
+    API tokens, and can never perform interactive web login.
+    """
+
+    __tablename__ = "service_accounts"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_sa_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    organization: Mapped[Organization] = relationship(back_populates="service_accounts")

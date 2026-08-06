@@ -4,6 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_session
 from app.identity import sessions as sess
+from app.identity.api_tokens import (
+    TokenError,
+    TokenNotOwned,
+    TokenNotFound,
+    create_api_token,
+    list_api_tokens,
+    revoke_api_token,
+    rotate_api_token,
+)
 from app.identity.application import (
     IdentityError,
     KeyNotFound,
@@ -22,11 +31,15 @@ from app.identity.application import (
 )
 from app.identity.models import User
 from app.identity.oauth import authorize_url, cookie_value, is_allowed_redirect, make_state_token, verify_state_token
-from app.identity.repositories import SessionRepository
+from app.identity.repositories import ApiTokenRepository, SessionRepository
 from app.identity.sessions import agreements_status
 from app.schemas import (
     AgreementsRequest,
-    AuthMeResponse,
+    ApiTokenCreateRequest,
+    ApiTokenCreateResponse,
+    ApiTokenInfo,
+    ApiTokenRotateRequest,
+    ApiTokensResponse,
     DeviceLoginRequest,
     DeviceLoginResponse,
     DevicePollRequest,
@@ -63,6 +76,27 @@ def session_list(rows) -> list[SessionInfo]:
     return [_session_info(r) for r in rows]
 
 
+def _dt_iso(dt) -> str | None:
+    if dt is None:
+        return None
+    return dt.isoformat() + "Z" if dt.tzinfo is None else dt.isoformat().replace("+00:00", "Z")
+
+
+def token_info(row) -> ApiTokenInfo:
+    return ApiTokenInfo(
+        id=row.id,
+        label=row.label,
+        prefix=row.prefix,
+        scopes=[s for s in row.scopes.split(",") if s],
+        organizationId=row.organization_id,
+        isServiceAccount=row.is_service_account,
+        createdAt=_dt_iso(row.created_at),
+        lastUsedAt=_dt_iso(row.last_used_at),
+        expiresAt=_dt_iso(row.expires_at),
+        revoked=row.revoked_at is not None,
+    )
+
+
 @router.post("/auth/github", response_model=GithubExchangeResponse)
 async def github_login(req: GithubExchangeRequest, session: AsyncSession = Depends(get_session)):
     user = await login_with_github(session, req.code)
@@ -97,6 +131,87 @@ async def revoke_key(
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     await session.commit()
     return {"ok": True, "fingerprint": key.fingerprint, "revoked": True}
+
+
+@router.get("/tokens", response_model=ApiTokensResponse)
+async def my_tokens(
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_active_user),
+):
+    rows = await list_api_tokens(session, user)
+    return ApiTokensResponse(items=[token_info(r) for r in rows])
+
+
+@router.post("/tokens", response_model=ApiTokenCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_token(
+    req: ApiTokenCreateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_active_user),
+):
+    from app.config import get_settings
+
+    settings = get_settings()
+    existing = await ApiTokenRepository(session).for_user(user.id)
+    if len(existing) >= settings.token_max_per_account:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"token limit reached (max {settings.token_max_per_account})",
+        )
+    try:
+        raw, row = await create_api_token(
+            session,
+            user,
+            label=req.label,
+            scopes=req.scopes,
+            organization_id=req.organizationId,
+            is_service_account=req.isServiceAccount,
+            expires_in_days=req.expiresInDays,
+        )
+    except TokenError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    await session.commit()
+    return ApiTokenCreateResponse(
+        id=row.id,
+        token=raw,
+        prefix=row.prefix,
+        scopes=[s for s in row.scopes.split(",") if s],
+    )
+
+
+@router.delete("/tokens/{token_id}", response_model=ApiTokenInfo)
+async def revoke_token(
+    token_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_active_user),
+):
+    try:
+        row = await revoke_api_token(session, user, token_id)
+    except (TokenNotFound, TokenNotOwned) as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    await session.commit()
+    return token_info(row)
+
+
+@router.post("/tokens/{token_id}/rotate", response_model=ApiTokenCreateResponse)
+async def rotate_token(
+    token_id: int,
+    req: ApiTokenRotateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_active_user),
+):
+    try:
+        raw, fresh = await rotate_api_token(
+            session, user, token_id, expires_in_days=req.expiresInDays
+        )
+    except (TokenNotFound, TokenNotOwned, TokenError) as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    await session.commit()
+    return ApiTokenCreateResponse(
+        id=fresh.id,
+        token=raw,
+        prefix=fresh.prefix,
+        scopes=[s for s in fresh.scopes.split(",") if s],
+    )
 
 
 @router.post("/admin/users/{user_id}/suspend")

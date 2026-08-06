@@ -24,6 +24,9 @@ from app.schemas import (
     OrgTeamsResponse,
     OrgUpdateRequest,
     OrganizationDetail,
+    ServiceAccountCreateRequest,
+    ServiceAccountItem,
+    ServiceAccountsResponse,
     TeamCreateRequest,
     TeamMemberRequest,
 )
@@ -303,6 +306,63 @@ async def remove_team_member(
         result = await application.remove_team_member(
             session, user, slug, team_id, username
         )
+        await session.commit()
+        return OrgActionResponse(**result)
+    except OrganizationError as exc:
+        raise _map_errors(exc) from exc
+
+
+@router.get("/orgs/{slug}/service-accounts", response_model=ServiceAccountsResponse)
+async def list_service_accounts(
+    slug: str,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_cookie_active_user),
+):
+    try:
+        items = await application.list_service_accounts(session, user, slug)
+        return ServiceAccountsResponse(items=[ServiceAccountItem(**i) for i in items])
+    except OrganizationError as exc:
+        raise _map_errors(exc) from exc
+
+
+@router.post(
+    "/orgs/{slug}/service-accounts",
+    response_model=ServiceAccountItem,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_service_account(
+    slug: str,
+    payload: ServiceAccountCreateRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_cookie_active_user),
+):
+    _org_limits(request, user)
+    try:
+        result = await application.create_service_account(
+            session, user, slug, name=payload.name, role=payload.role
+        )
+        await session.commit()
+        return ServiceAccountItem(
+            id=result["id"],
+            name=result["name"],
+            username=f"svc-{slug}-{result['name'].strip().lower().replace(' ', '-')}",
+            role=result["role"],
+            status="active",
+        )
+    except OrganizationError as exc:
+        raise _map_errors(exc) from exc
+
+
+@router.delete("/orgs/{slug}/service-accounts/{sa_id}", response_model=OrgActionResponse)
+async def delete_service_account(
+    slug: str,
+    sa_id: int,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(resolve_cookie_active_user),
+):
+    try:
+        result = await application.delete_service_account(session, user, slug, sa_id)
         await session.commit()
         return OrgActionResponse(**result)
     except OrganizationError as exc:

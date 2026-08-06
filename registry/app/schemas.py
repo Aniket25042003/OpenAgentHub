@@ -477,6 +477,59 @@ class OrgActionResponse(BaseModel):
     team: str | None = None
 
 
+class ApiTokenInfo(BaseModel):
+    id: int
+    label: str
+    prefix: str
+    scopes: list[str]
+    organizationId: int | None = None
+    isServiceAccount: bool = False
+    createdAt: str
+    lastUsedAt: str | None = None
+    expiresAt: str | None = None
+    revoked: bool = False
+
+
+class ApiTokenCreateRequest(BaseModel):
+    label: str
+    scopes: list[str] = ["packages:read", "packages:publish"]
+    organizationId: int | None = None
+    isServiceAccount: bool = False
+    expiresInDays: int | None = None
+
+
+class ApiTokenCreateResponse(BaseModel):
+    id: int
+    token: str
+    prefix: str
+    scopes: list[str]
+
+
+class ApiTokensResponse(BaseModel):
+    items: list[ApiTokenInfo]
+
+
+class ApiTokenRotateRequest(BaseModel):
+    expiresInDays: int | None = None
+
+
+class ServiceAccountCreateRequest(BaseModel):
+    name: str
+    role: str = "maintainer"
+
+
+class ServiceAccountItem(BaseModel):
+    id: int
+    name: str
+    username: str
+    role: str
+    status: str
+
+
+class ServiceAccountsResponse(BaseModel):
+    items: list[ServiceAccountItem]
+
+
 def dt_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         return dt.isoformat() + "Z"

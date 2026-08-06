@@ -123,11 +123,11 @@ def test_openapi_exposes_all_router_paths():
 
 def test_module_tables_are_owned_by_their_module():
     ownership = {
-        "identity": ("users", "signing_keys"),
+        "identity": ("users", "signing_keys", "sessions", "user_agreements", "login_transactions", "api_tokens"),
         "registry": ("agents", "agent_versions", "namespaces", "namespace_members", "version_review_events", "agent_grants"),
         "audit": ("audit_events",),
         "outbox": ("outbox_events", "queue_jobs"),
-        "organizations": ("organizations", "organization_members", "teams", "team_members", "invitations"),
+        "organizations": ("organizations", "organization_members", "teams", "team_members", "invitations", "service_accounts"),
     }
     for module, tables in ownership.items():
         models_path = APP_ROOT / module / "models.py"
@@ -148,6 +148,7 @@ ALLOWED_CROSS_MODULE = {
     "entitlements/application.py": {"audit", "identity"},
     "identity/application.py": {"audit"},
     "identity/sessions.py": {"audit"},
+    "identity/api_tokens.py": {"audit"},
     "organizations/application.py": {"audit", "identity"},
     "organizations/routes.py": {"identity"},
     "db.py": {"registry"},
