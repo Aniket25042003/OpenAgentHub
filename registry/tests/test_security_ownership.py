@@ -198,14 +198,14 @@ async def test_suspended_user_cannot_publish(client):
     assert "suspended" in res.text
 
 
-async def test_yank_requires_reviewer_or_admin(client):
+async def test_yank_allowed_for_owner_and_reviewer(client):
     token, _ = await create_user()
     archive, sig, _, _ = signed_package("acme", "yank", "1.0.0")
     assert (await publish(client, token, "acme", "yank", "1.0.0", archive, sig)).status_code == 200
     res = await client.post(
         "/api/v1/admin/agents/acme/yank/versions/1.0.0/yank", headers=auth_header(token), json={"yanked": True}
     )
-    assert res.status_code == 403
+    assert res.status_code == 200
 
     from app.db import get_session_factory as gsf
 
@@ -219,11 +219,25 @@ async def test_yank_requires_reviewer_or_admin(client):
     res = await client.post(
         "/api/v1/admin/agents/acme/yank/versions/1.0.0/yank",
         headers=auth_header(reviewer_token),
-        json={"yanked": True},
+        json={"yanked": False},
     )
     assert res.status_code == 200
     detail = (await client.get("/api/v1/agents/acme/yank/versions/1.0.0")).json()
-    assert detail["yanked"] is True
+    assert detail["yanked"] is False
+
+
+async def test_yank_denied_outside_namespace(client):
+    owner_token, _ = await create_user()
+    archive, sig, _, _ = signed_package("acme", "yank-ns", "1.0.0")
+    assert (await publish(client, owner_token, "acme", "yank-ns", "1.0.0", archive, sig)).status_code == 200
+
+    outsider, _ = await create_user()
+    res = await client.post(
+        "/api/v1/admin/agents/acme/yank-ns/versions/1.0.0/yank",
+        headers=auth_header(outsider),
+        json={"yanked": True},
+    )
+    assert res.status_code == 403
 
 
 async def test_new_account_publish_quota(client):

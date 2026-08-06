@@ -106,11 +106,17 @@ function Stat({ label, value, sub, good }: { label: string; value: string; sub?:
 
 function InstalledAgents({ snap }: { snap: SystemSnapshot }) {
   const installed = snap.openagenthub.installed;
+  const revoked = installed.filter((a) => a.reviewStatus === "rejected" || a.reviewStatus === "revoked");
   return (
     <section>
       <h2>
         OpenAgentHub agents <span className="badge">{installed.length}</span>
       </h2>
+      {revoked.length > 0 && (
+        <p className="pill bad" style={{ marginBottom: 12 }}>
+          {revoked.length} installed version(s) were {revoked.map((a) => a.reviewStatus).join(" or ")} by the registry — do not run them.
+        </p>
+      )}
       {installed.length === 0 ? (
         <p className="hint">
           No agents installed via OpenAgentHub. Try <code className="inline">openagenthub install &lt;namespace&gt;/&lt;name&gt;</code>.
@@ -123,6 +129,7 @@ function InstalledAgents({ snap }: { snap: SystemSnapshot }) {
                 <th>spec</th>
                 <th>version</th>
                 <th>trust</th>
+                <th>review</th>
                 <th>installed</th>
               </tr>
             </thead>
@@ -133,6 +140,15 @@ function InstalledAgents({ snap }: { snap: SystemSnapshot }) {
                   <td>{a.version}</td>
                   <td>
                     <span className={`pill ${trustPill(a.trust)}`}>{a.trust}</span>
+                  </td>
+                  <td>
+                    {a.reviewStatus ? (
+                      <span className={`pill ${a.reviewStatus === "rejected" || a.reviewStatus === "revoked" ? "bad" : a.reviewStatus === "verified" ? "good" : "warn"}`}>
+                        {a.reviewStatus}
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
                   </td>
                   <td>{a.installedAt.slice(0, 10)}</td>
                 </tr>

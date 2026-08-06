@@ -29,3 +29,12 @@ class AuditRepository:
             AuditEvent.actor_id == actor_id, AuditEvent.action == action, AuditEvent.created_at >= since
         )
         return (await self.session.execute(stmt)).scalar_one()
+
+    async def recent_for_actor(self, *, actor_id: int, limit: int = 20) -> list[AuditEvent]:
+        stmt = (
+            select(AuditEvent)
+            .where(AuditEvent.actor_id == actor_id)
+            .order_by(AuditEvent.created_at.desc())
+            .limit(limit)
+        )
+        return (await self.session.execute(stmt)).scalars().all()

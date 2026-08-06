@@ -157,6 +157,8 @@ function installedAgents(): OahInstalledAgent[] {
     installedAt: a.installedAt,
     source: a.source,
     path: join(AGENTS_DIR, a.namespace, a.name, a.version),
+    reviewStatus: a.reviewStatus,
+    statusCheckedAt: a.statusCheckedAt,
   }));
 }
 

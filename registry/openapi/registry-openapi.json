@@ -1,6 +1,30 @@
 {
   "components": {
     "schemas": {
+      "ActivityItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action",
+          "detail",
+          "createdAt"
+        ],
+        "title": "ActivityItem",
+        "type": "object"
+      },
       "AgentSummary": {
         "properties": {
           "author": {
@@ -444,17 +468,6 @@
             "title": "Mode",
             "type": "string"
           },
-          "registryOrigin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Registryorigin"
-          },
           "requestedScopes": {
             "default": "cli",
             "title": "Requestedscopes",
@@ -639,6 +652,369 @@
         "title": "NamespaceClaimRequest",
         "type": "object"
       },
+      "NamespaceInfo": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "memberCount": {
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "packageCount": {
+            "title": "Packagecount",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "memberCount",
+          "packageCount",
+          "createdAt"
+        ],
+        "title": "NamespaceInfo",
+        "type": "object"
+      },
+      "PackageSummary": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "downloads": {
+            "title": "Downloads",
+            "type": "integer"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "publishedAt": {
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "reviewStatus": {
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "securityStatus": {
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          },
+          "trust": {
+            "enum": [
+              "trusted",
+              "untrusted",
+              "unknown"
+            ],
+            "title": "Trust",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "yanked": {
+            "title": "Yanked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "author",
+          "description",
+          "license",
+          "publishedAt",
+          "downloads",
+          "trust",
+          "reviewStatus",
+          "securityStatus",
+          "yanked"
+        ],
+        "title": "PackageSummary",
+        "type": "object"
+      },
+      "PublisherActivity": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PublisherActivity",
+        "type": "object"
+      },
+      "PublisherOverview": {
+        "properties": {
+          "activeSessions": {
+            "title": "Activesessions",
+            "type": "integer"
+          },
+          "flaggedVersions": {
+            "title": "Flaggedversions",
+            "type": "integer"
+          },
+          "keyCount": {
+            "title": "Keycount",
+            "type": "integer"
+          },
+          "namespaceCount": {
+            "title": "Namespacecount",
+            "type": "integer"
+          },
+          "packageCount": {
+            "title": "Packagecount",
+            "type": "integer"
+          },
+          "pendingScans": {
+            "title": "Pendingscans",
+            "type": "integer"
+          },
+          "publishesLimit": {
+            "title": "Publisheslimit",
+            "type": "integer"
+          },
+          "publishesUnlimited": {
+            "default": false,
+            "title": "Publishesunlimited",
+            "type": "boolean"
+          },
+          "publishesUsed": {
+            "title": "Publishesused",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "namespaceCount",
+          "packageCount",
+          "keyCount",
+          "activeSessions",
+          "publishesUsed",
+          "publishesLimit",
+          "pendingScans",
+          "flaggedVersions"
+        ],
+        "title": "PublisherOverview",
+        "type": "object"
+      },
+      "ReviewEventItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewer": {
+            "title": "Reviewer",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          }
+        },
+        "required": [
+          "action",
+          "reason",
+          "reviewer",
+          "createdAt",
+          "digest"
+        ],
+        "title": "ReviewEventItem",
+        "type": "object"
+      },
+      "ReviewQueueItem": {
+        "properties": {
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "downloads": {
+            "title": "Downloads",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "permissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "publishedAt": {
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "reviewStatus": {
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "riskScore": {
+            "title": "Riskscore",
+            "type": "integer"
+          },
+          "secrets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Secrets",
+            "type": "array"
+          },
+          "securityStatus": {
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "publishedAt",
+          "publisher",
+          "reviewStatus",
+          "securityStatus",
+          "riskScore",
+          "downloads"
+        ],
+        "title": "ReviewQueueItem",
+        "type": "object"
+      },
+      "ReviewQueueResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReviewQueueResponse",
+        "type": "object"
+      },
       "ReviewRequest": {
         "properties": {
           "action": {
@@ -646,7 +1022,8 @@
               "verify",
               "warning",
               "reject",
-              "revoke"
+              "revoke",
+              "request"
             ],
             "title": "Action",
             "type": "string"
@@ -752,6 +1129,89 @@
           "items"
         ],
         "title": "SearchResponse",
+        "type": "object"
+      },
+      "SecurityDiff": {
+        "properties": {
+          "addedPermissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Addedpermissions",
+            "type": "array"
+          },
+          "addedSecrets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Addedsecrets",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityDiffField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "removedPermissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Removedpermissions",
+            "type": "array"
+          },
+          "removedSecrets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Removedsecrets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "SecurityDiff",
+        "type": "object"
+      },
+      "SecurityDiffField": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "SecurityDiffField",
         "type": "object"
       },
       "SecurityReport": {
@@ -1023,6 +1483,172 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VersionIdentity": {
+        "properties": {
+          "blocked": {
+            "default": false,
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "blockedReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blockedreason"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "downloadCount": {
+            "title": "Downloadcount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "publishedAt": {
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "publishedBy": {
+            "title": "Publishedby",
+            "type": "string"
+          },
+          "reviewReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewreason"
+          },
+          "reviewStatus": {
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "scanCompletedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scancompletedat"
+          },
+          "scanRequestedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanrequestedat"
+          },
+          "securityFindings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Securityfindings",
+            "type": "array"
+          },
+          "securityStatus": {
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          },
+          "trust": {
+            "enum": [
+              "trusted",
+              "untrusted",
+              "unknown"
+            ],
+            "title": "Trust",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "yanked": {
+            "title": "Yanked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "publishedAt",
+          "publishedBy",
+          "downloadCount",
+          "trust",
+          "reviewStatus",
+          "securityStatus",
+          "yanked"
+        ],
+        "title": "VersionIdentity",
+        "type": "object"
+      },
+      "VersionIdentityDetail": {
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/VersionIdentity"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "reviewHistory": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReviewEventItem"
+            },
+            "title": "Reviewhistory",
+            "type": "array"
+          },
+          "securityDiff": {
+            "$ref": "#/components/schemas/SecurityDiff"
+          }
+        },
+        "required": [
+          "identity",
+          "manifest",
+          "securityDiff"
+        ],
+        "title": "VersionIdentityDetail",
+        "type": "object"
+      },
       "VersionsResponse": {
         "properties": {
           "versions": {
@@ -1128,11 +1754,6 @@
             "description": "Validation Error"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "summary": "Review Version"
       }
     },
@@ -1204,6 +1825,24 @@
           }
         ],
         "summary": "Yank Version"
+      }
+    },
+    "/api/v1/admin/review-queue": {
+      "get": {
+        "operationId": "review_queue_api_v1_admin_review_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Review Queue"
       }
     },
     "/api/v1/admin/users/{user_id}/suspend": {
@@ -2191,6 +2830,24 @@
         "summary": "Me"
       }
     },
+    "/api/v1/me/activity": {
+      "get": {
+        "operationId": "activity_api_v1_me_activity_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublisherActivity"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Activity"
+      }
+    },
     "/api/v1/me/agreements": {
       "get": {
         "operationId": "my_agreements_api_v1_me_agreements_get",
@@ -2239,6 +2896,125 @@
           }
         },
         "summary": "Update Agreements"
+      }
+    },
+    "/api/v1/me/namespaces": {
+      "get": {
+        "operationId": "namespaces_api_v1_me_namespaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NamespaceInfo"
+                  },
+                  "title": "Response Namespaces Api V1 Me Namespaces Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Namespaces"
+      }
+    },
+    "/api/v1/me/overview": {
+      "get": {
+        "operationId": "overview_api_v1_me_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublisherOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Overview"
+      }
+    },
+    "/api/v1/me/packages": {
+      "get": {
+        "operationId": "packages_api_v1_me_packages_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PackageSummary"
+                  },
+                  "title": "Response Packages Api V1 Me Packages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Packages"
+      }
+    },
+    "/api/v1/me/packages/{namespace}/{name}/versions/{version}": {
+      "get": {
+        "operationId": "version_identity_api_v1_me_packages__namespace___name__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionIdentityDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Identity"
       }
     },
     "/api/v1/namespaces": {

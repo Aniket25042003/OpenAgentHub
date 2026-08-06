@@ -3,7 +3,7 @@ from datetime import datetime
 
 import httpx
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -101,6 +101,59 @@ def require_roles(*roles: str):
 
 require_admin = require_roles("admin")
 require_reviewer_or_admin = require_roles("reviewer", "admin")
+
+
+async def resolve_cookie_user(request: Request, session: AsyncSession) -> User:
+    from app.identity.sessions import session_user
+
+    token = request.cookies.get(get_settings().session_cookie_name)
+    if not token:
+        bearer = request.headers.get("authorization", "")
+        if bearer.startswith("Bearer "):
+            user = await _user_from_bearer(bearer.removeprefix("Bearer ").strip(), session)
+            if user is not None:
+                return user
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not signed in")
+    user, _ = await session_user(session, token, rotate=False)
+    return user
+
+
+async def resolve_cookie_active_user(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> User:
+    user = await resolve_cookie_user(request, session)
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account is suspended")
+    return user
+
+
+def resolve_cookie_role(*roles: str):
+    async def _check(
+        request: Request, session: AsyncSession = Depends(get_session)
+    ) -> User:
+        user = await resolve_cookie_user(request, session)
+        if user.role not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient role")
+        if user.status != "active":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account is suspended")
+        return user
+
+    return _check
+
+
+resolve_cookie_reviewer_or_admin = resolve_cookie_role("reviewer", "admin")
+
+
+async def _user_from_bearer(token: str, session: AsyncSession) -> User | None:
+    try:
+        payload = decode_token(token)
+        user_id = int(payload["sub"])
+        user = await session.get(User, user_id)
+        if user is not None:
+            return user
+    except (HTTPException, KeyError, ValueError):
+        pass
+    return await _user_from_session(session, token)
 
 
 async def exchange_github_code(code: str) -> tuple[str, str, str | None]:

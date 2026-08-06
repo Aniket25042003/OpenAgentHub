@@ -162,6 +162,122 @@ describe("RegistryClient.catalog", () => {
     }
   });
 
+  it("reads publisher console overview and namespaces", async () => {
+    let seenUrl = "";
+    const server = await startServer((req, res) => {
+      seenUrl = req.url ?? "";
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify(
+          req.url?.startsWith("/api/v1/me/overview")
+            ? {
+                namespaceCount: 2,
+                packageCount: 3,
+                keyCount: 1,
+                activeSessions: 1,
+                publishesUsed: 1,
+                publishesLimit: 10,
+                publishesUnlimited: false,
+                pendingScans: 0,
+                flaggedVersions: 0,
+              }
+            : [{ name: "acme", role: "owner", memberCount: 1, packageCount: 3, createdAt: "2026-01-01T00:00:00Z" }],
+        ),
+      );
+    });
+    try {
+      const client = new RegistryClient(server.url, "tok");
+      const overview = await client.publisherOverview();
+      assert.equal(overview.namespaceCount, 2);
+      const namespaces = await client.publisherNamespaces();
+      assert.equal(namespaces.length, 1);
+      assert.equal(namespaces[0].role, "owner");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reads version identity and submits reviews", async () => {
+    const calls: string[] = [];
+    const server = await startServer((req, res) => {
+      calls.push(`${req.method} ${req.url}`);
+      res.setHeader("content-type", "application/json");
+      if (req.method === "POST") {
+        res.end(JSON.stringify({ status: "verified" }));
+        return;
+      }
+      res.end(
+        JSON.stringify({
+          identity: {
+            namespace: "acme",
+            name: "hello",
+            version: "1.0.0",
+            digest: "d",
+            publishedBy: "tester",
+            downloadCount: 0,
+            reviewStatus: "pending",
+            securityStatus: "clean",
+            securityFindings: [],
+            yanked: false,
+            blocked: false,
+            trust: "unknown",
+          },
+          manifest: { name: "acme/hello" },
+          securityDiff: { fields: [], addedPermissions: [], removedPermissions: [], addedSecrets: [], removedSecrets: [] },
+          reviewHistory: [],
+        }),
+      );
+    });
+    try {
+      const client = new RegistryClient(server.url, "tok");
+      const detail = await client.versionIdentity("acme", "hello", "1.0.0");
+      assert.equal(detail.identity.digest, "d");
+      const result = await client.reviewVersion("acme", "hello", "1.0.0", "verify", "approved");
+      assert.equal(result.status, "verified");
+      assert.ok(calls.some((c) => c.startsWith("POST /api/v1/admin/agents/acme/hello/versions/1.0.0/review")));
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reads the admin review queue", async () => {
+    let seenUrl = "";
+    const server = await startServer((req, res) => {
+      seenUrl = req.url ?? "";
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          items: [
+            {
+              id: 1,
+              namespace: "acme",
+              name: "hello",
+              version: "1.0.0",
+              digest: "abc",
+              publishedAt: "2026-01-01T00:00:00Z",
+              publisher: "tester",
+              reviewStatus: "pending",
+              securityStatus: "clean",
+              riskScore: 80,
+              permissions: ["network"],
+              secrets: [],
+              downloads: 0,
+            },
+          ],
+        }),
+      );
+    });
+    try {
+      const client = new RegistryClient(server.url, "tok");
+      const queue = await client.reviewQueue();
+      assert.equal(queue.length, 1);
+      assert.equal(queue[0].riskScore, 80);
+      assert.ok(seenUrl.includes("/api/v1/admin/review-queue"));
+    } finally {
+      await server.close();
+    }
+  });
+
   it("reads and accepts agreements", async () => {
     const server = await startServer((req, res) => {
       res.setHeader("content-type", "application/json");

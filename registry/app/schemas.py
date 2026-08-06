@@ -80,7 +80,7 @@ class AgentVersionDetail(BaseModel):
 
 
 class ReviewRequest(BaseModel):
-    action: Literal["verify", "warning", "reject", "revoke"]
+    action: Literal["verify", "warning", "reject", "revoke", "request"]
     reason: str
     notes: str | None = None
 
@@ -237,6 +237,131 @@ class SuspendRequest(BaseModel):
 
 class YankRequest(BaseModel):
     yanked: bool
+
+
+class NamespaceInfo(BaseModel):
+    name: str
+    role: str
+    memberCount: int
+    packageCount: int
+    createdAt: str
+
+
+class PackageSummary(BaseModel):
+    namespace: str
+    name: str
+    version: str
+    digest: str
+    author: str
+    description: str
+    license: str
+    publishedAt: str
+    downloads: int
+    trust: TrustLevel
+    reviewStatus: str
+    securityStatus: str
+    yanked: bool
+    blocked: str | None = None
+    signerFingerprint: str | None = None
+
+
+class PublisherPackageList(BaseModel):
+    items: list[PackageSummary]
+
+
+class SecurityDiffField(BaseModel):
+    field: str
+    previous: str | None = None
+    current: str | None = None
+
+
+class VersionIdentity(BaseModel):
+    namespace: str
+    name: str
+    version: str
+    digest: str
+    signerFingerprint: str | None = None
+    publishedAt: str
+    publishedBy: str
+    downloadCount: int
+    trust: TrustLevel
+    reviewStatus: str
+    reviewReason: str | None = None
+    securityStatus: str
+    securityFindings: list[str] = []
+    yanked: bool
+    blocked: bool = False
+    blockedReason: str | None = None
+    scanRequestedAt: str | None = None
+    scanCompletedAt: str | None = None
+
+
+class ReviewEventItem(BaseModel):
+    action: str
+    reason: str
+    notes: str | None = None
+    reviewer: str
+    createdAt: str
+    digest: str
+    signerFingerprint: str | None = None
+
+
+class SecurityDiff(BaseModel):
+    fields: list[SecurityDiffField]
+    addedPermissions: list[str] = []
+    removedPermissions: list[str] = []
+    addedSecrets: list[str] = []
+    removedSecrets: list[str] = []
+
+
+class VersionIdentityDetail(BaseModel):
+    identity: VersionIdentity
+    manifest: dict[str, Any]
+    securityDiff: SecurityDiff
+    reviewHistory: list[ReviewEventItem] = []
+
+
+class ActivityItem(BaseModel):
+    action: str
+    detail: dict[str, Any]
+    createdAt: str
+
+
+class PublisherActivity(BaseModel):
+    items: list[ActivityItem]
+
+
+class PublisherOverview(BaseModel):
+    namespaceCount: int
+    packageCount: int
+    keyCount: int
+    activeSessions: int
+    publishesUsed: int
+    publishesLimit: int
+    publishesUnlimited: bool = False
+    pendingScans: int
+    flaggedVersions: int
+
+
+class ReviewQueueItem(BaseModel):
+    id: int
+    namespace: str
+    name: str
+    version: str
+    digest: str
+    publishedAt: str
+    publisher: str
+    signerFingerprint: str | None = None
+    reviewStatus: str
+    securityStatus: str
+    riskScore: int
+    permissions: list[str] = []
+    secrets: list[str] = []
+    downloads: int
+
+
+class ReviewQueueResponse(BaseModel):
+    items: list[ReviewQueueItem]
 
 
 def dt_iso(dt: datetime) -> str:

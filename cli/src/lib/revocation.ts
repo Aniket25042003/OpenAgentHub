@@ -1,6 +1,7 @@
 import { RegistryClient } from "@openagenthub/sdk";
 import {
   loadConfig,
+  recordStatusRefresh,
   type InstalledAgent,
 } from "@openagenthub/runtime";
 
@@ -17,6 +18,13 @@ export function installedIsFresh(installed: InstalledAgent): boolean {
   return Date.now() - new Date(installed.statusCheckedAt).getTime() < STATUS_FRESH_MS;
 }
 
+/**
+ * Refresh installed status from the registry (using a bounded cache backed by
+ * `statusCheckedAt`) and persist a successful refresh so stale/offline runs do
+ * not silently upgrade trust.
+ *
+ * Returns `statusFresh: true` when the record is fresh or was just refreshed.
+ */
 export async function checkRevocationBeforeRun(
   agentKey: string,
   installed: InstalledAgent,
@@ -45,8 +53,11 @@ export async function checkRevocationBeforeRun(
       i.name === installed.name &&
       (i.version === installed.version || i.digest === installed.archiveDigest),
   );
+  const config = loadConfig();
   if (match) {
+    recordStatusRefresh(config, agentKey, { reviewStatus: match.reviewStatus });
     return { blocked: `agent was ${match.reviewStatus} by the registry: ${match.reason}`, statusFresh: true };
   }
+  recordStatusRefresh(config, agentKey, { reviewStatus: installed.reviewStatus });
   return { statusFresh: true };
 }

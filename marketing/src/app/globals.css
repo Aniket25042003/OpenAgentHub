@@ -1478,3 +1478,68 @@ footer.site {
     font-size: 1.75rem;
   }
 }
+
+/* Catalog (marketing /agents) */
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+.catalog-card {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.catalog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.catalog-head h3 {
+  font-size: 1.2rem;
+  margin: 0;
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+}
+.catalog-pill {
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  text-transform: uppercase;
+}
+.catalog-pill.good { color: var(--clear-strong); border-color: rgba(43, 191, 138, 0.45); }
+.catalog-pill.warn { color: var(--signal); border-color: rgba(242, 163, 61, 0.45); }
+.catalog-pill.bad  { color: var(--rust); border-color: rgba(193, 97, 63, 0.45); }
+.catalog-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0;
+}
+.catalog-desc {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.catalog-install {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(241, 237, 228, 0.05);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-sm, 6px));
+  font-size: 0.78rem;
+  overflow-x: auto;
+}
+.catalog-note {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}

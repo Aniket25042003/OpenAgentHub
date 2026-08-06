@@ -56,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
             <nav className="nav-links">
               <a href="#features">Features</a>
+              <a href="/agents">Agents</a>
               <a href="#security">Security</a>
               <a href="#how">How it works</a>
               <a href="#install">Install</a>
@@ -101,6 +102,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="footer-col">
                 <h4>Resources</h4>
                 <nav>
+                  <a href="/agents">Browse agents</a>
                   <a href={GITHUB} target="_blank" rel="noreferrer">Source code</a>
                   <a href={`${GITHUB}#readme`} target="_blank" rel="noreferrer">Documentation</a>
                   <a href={`${GITHUB}/tree/main/docs`} target="_blank" rel="noreferrer">Architecture docs</a>
