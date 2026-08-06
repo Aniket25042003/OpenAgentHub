@@ -1,6 +1,30 @@
 {
   "components": {
     "schemas": {
+      "ActivityItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action",
+          "detail",
+          "createdAt"
+        ],
+        "title": "ActivityItem",
+        "type": "object"
+      },
       "AgentSummary": {
         "properties": {
           "author": {
@@ -197,6 +221,27 @@
         "title": "AgentVersionDetail",
         "type": "object"
       },
+      "AgreementsRequest": {
+        "properties": {
+          "privacy": {
+            "default": false,
+            "title": "Privacy",
+            "type": "boolean"
+          },
+          "publisher": {
+            "default": false,
+            "title": "Publisher",
+            "type": "boolean"
+          },
+          "tos": {
+            "default": false,
+            "title": "Tos",
+            "type": "boolean"
+          }
+        },
+        "title": "AgreementsRequest",
+        "type": "object"
+      },
       "Body_publish_version_api_v1_agents__namespace___name__versions__version__put": {
         "properties": {
           "archive": {
@@ -215,6 +260,301 @@
           "signature"
         ],
         "title": "Body_publish_version_api_v1_agents__namespace___name__versions__version__put",
+        "type": "object"
+      },
+      "CatalogItem": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "downloads": {
+            "title": "Downloads",
+            "type": "integer"
+          },
+          "framework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Framework"
+          },
+          "interfaces": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Interfaces",
+            "type": "array"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "permissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "publishedAt": {
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "reviewStatus": {
+            "default": "pending",
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "reviewedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewedat"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime"
+          },
+          "secrets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Secrets",
+            "type": "array"
+          },
+          "securityStatus": {
+            "default": "pending",
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "signerVerified": {
+            "default": false,
+            "title": "Signerverified",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "yanked": {
+            "default": false,
+            "title": "Yanked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "author",
+          "description",
+          "license",
+          "models",
+          "tags",
+          "downloads",
+          "publisher",
+          "publishedAt"
+        ],
+        "title": "CatalogItem",
+        "type": "object"
+      },
+      "CatalogResponse": {
+        "properties": {
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CatalogItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          },
+          "schemaVersion": {
+            "default": 1,
+            "title": "Schemaversion",
+            "type": "integer"
+          },
+          "watermark": {
+            "title": "Watermark",
+            "type": "string"
+          }
+        },
+        "required": [
+          "watermark"
+        ],
+        "title": "CatalogResponse",
+        "type": "object"
+      },
+      "DeviceLoginRequest": {
+        "properties": {
+          "clientName": {
+            "default": "cli",
+            "title": "Clientname",
+            "type": "string"
+          },
+          "mode": {
+            "default": "poll",
+            "title": "Mode",
+            "type": "string"
+          },
+          "registryOrigin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registryorigin"
+          },
+          "requestedScopes": {
+            "default": "cli",
+            "title": "Requestedscopes",
+            "type": "string"
+          }
+        },
+        "title": "DeviceLoginRequest",
+        "type": "object"
+      },
+      "DeviceLoginResponse": {
+        "properties": {
+          "deviceCode": {
+            "title": "Devicecode",
+            "type": "string"
+          },
+          "expiresIn": {
+            "title": "Expiresin",
+            "type": "integer"
+          },
+          "interval": {
+            "title": "Interval",
+            "type": "integer"
+          },
+          "userCode": {
+            "title": "Usercode",
+            "type": "string"
+          },
+          "verificationUri": {
+            "title": "Verificationuri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceCode",
+          "userCode",
+          "verificationUri",
+          "expiresIn",
+          "interval"
+        ],
+        "title": "DeviceLoginResponse",
+        "type": "object"
+      },
+      "DevicePollRequest": {
+        "properties": {
+          "deviceCode": {
+            "title": "Devicecode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceCode"
+        ],
+        "title": "DevicePollRequest",
+        "type": "object"
+      },
+      "DevicePollResponse": {
+        "properties": {
+          "accessToken": {
+            "title": "Accesstoken",
+            "type": "string"
+          },
+          "tokenType": {
+            "default": "bearer",
+            "title": "Tokentype",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken",
+          "username"
+        ],
+        "title": "DevicePollResponse",
         "type": "object"
       },
       "GithubExchangeRequest": {
@@ -323,6 +663,369 @@
         "title": "NamespaceClaimRequest",
         "type": "object"
       },
+      "NamespaceInfo": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "memberCount": {
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "packageCount": {
+            "title": "Packagecount",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "memberCount",
+          "packageCount",
+          "createdAt"
+        ],
+        "title": "NamespaceInfo",
+        "type": "object"
+      },
+      "PackageSummary": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "downloads": {
+            "title": "Downloads",
+            "type": "integer"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "publishedAt": {
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "reviewStatus": {
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "securityStatus": {
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          },
+          "trust": {
+            "enum": [
+              "trusted",
+              "untrusted",
+              "unknown"
+            ],
+            "title": "Trust",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "yanked": {
+            "title": "Yanked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "author",
+          "description",
+          "license",
+          "publishedAt",
+          "downloads",
+          "trust",
+          "reviewStatus",
+          "securityStatus",
+          "yanked"
+        ],
+        "title": "PackageSummary",
+        "type": "object"
+      },
+      "PublisherActivity": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PublisherActivity",
+        "type": "object"
+      },
+      "PublisherOverview": {
+        "properties": {
+          "activeSessions": {
+            "title": "Activesessions",
+            "type": "integer"
+          },
+          "flaggedVersions": {
+            "title": "Flaggedversions",
+            "type": "integer"
+          },
+          "keyCount": {
+            "title": "Keycount",
+            "type": "integer"
+          },
+          "namespaceCount": {
+            "title": "Namespacecount",
+            "type": "integer"
+          },
+          "packageCount": {
+            "title": "Packagecount",
+            "type": "integer"
+          },
+          "pendingScans": {
+            "title": "Pendingscans",
+            "type": "integer"
+          },
+          "publishesLimit": {
+            "title": "Publisheslimit",
+            "type": "integer"
+          },
+          "publishesUnlimited": {
+            "default": false,
+            "title": "Publishesunlimited",
+            "type": "boolean"
+          },
+          "publishesUsed": {
+            "title": "Publishesused",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "namespaceCount",
+          "packageCount",
+          "keyCount",
+          "activeSessions",
+          "publishesUsed",
+          "publishesLimit",
+          "pendingScans",
+          "flaggedVersions"
+        ],
+        "title": "PublisherOverview",
+        "type": "object"
+      },
+      "ReviewEventItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewer": {
+            "title": "Reviewer",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          }
+        },
+        "required": [
+          "action",
+          "reason",
+          "reviewer",
+          "createdAt",
+          "digest"
+        ],
+        "title": "ReviewEventItem",
+        "type": "object"
+      },
+      "ReviewQueueItem": {
+        "properties": {
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "downloads": {
+            "title": "Downloads",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "permissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "publishedAt": {
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "reviewStatus": {
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "riskScore": {
+            "title": "Riskscore",
+            "type": "integer"
+          },
+          "secrets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Secrets",
+            "type": "array"
+          },
+          "securityStatus": {
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "publishedAt",
+          "publisher",
+          "reviewStatus",
+          "securityStatus",
+          "riskScore",
+          "downloads"
+        ],
+        "title": "ReviewQueueItem",
+        "type": "object"
+      },
+      "ReviewQueueResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReviewQueueResponse",
+        "type": "object"
+      },
       "ReviewRequest": {
         "properties": {
           "action": {
@@ -330,7 +1033,8 @@
               "verify",
               "warning",
               "reject",
-              "revoke"
+              "revoke",
+              "request"
             ],
             "title": "Action",
             "type": "string"
@@ -438,6 +1142,89 @@
         "title": "SearchResponse",
         "type": "object"
       },
+      "SecurityDiff": {
+        "properties": {
+          "addedPermissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Addedpermissions",
+            "type": "array"
+          },
+          "addedSecrets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Addedsecrets",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityDiffField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "removedPermissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Removedpermissions",
+            "type": "array"
+          },
+          "removedSecrets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Removedsecrets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "SecurityDiff",
+        "type": "object"
+      },
+      "SecurityDiffField": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "SecurityDiffField",
+        "type": "object"
+      },
       "SecurityReport": {
         "properties": {
           "findings": {
@@ -463,6 +1250,71 @@
           "findings"
         ],
         "title": "SecurityReport",
+        "type": "object"
+      },
+      "SessionInfo": {
+        "properties": {
+          "audience": {
+            "title": "Audience",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "deviceLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Devicelabel"
+          },
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "lastUsedAt": {
+            "title": "Lastusedat",
+            "type": "string"
+          },
+          "revoked": {
+            "default": false,
+            "title": "Revoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "audience",
+          "createdAt",
+          "lastUsedAt",
+          "expiresAt"
+        ],
+        "title": "SessionInfo",
+        "type": "object"
+      },
+      "SessionsResponse": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionInfo"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "SessionsResponse",
         "type": "object"
       },
       "SignatureFile": {
@@ -642,6 +1494,172 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VersionIdentity": {
+        "properties": {
+          "blocked": {
+            "default": false,
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "blockedReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blockedreason"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "downloadCount": {
+            "title": "Downloadcount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "publishedAt": {
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "publishedBy": {
+            "title": "Publishedby",
+            "type": "string"
+          },
+          "reviewReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewreason"
+          },
+          "reviewStatus": {
+            "title": "Reviewstatus",
+            "type": "string"
+          },
+          "scanCompletedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scancompletedat"
+          },
+          "scanRequestedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanrequestedat"
+          },
+          "securityFindings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Securityfindings",
+            "type": "array"
+          },
+          "securityStatus": {
+            "title": "Securitystatus",
+            "type": "string"
+          },
+          "signerFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signerfingerprint"
+          },
+          "trust": {
+            "enum": [
+              "trusted",
+              "untrusted",
+              "unknown"
+            ],
+            "title": "Trust",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "yanked": {
+            "title": "Yanked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "version",
+          "digest",
+          "publishedAt",
+          "publishedBy",
+          "downloadCount",
+          "trust",
+          "reviewStatus",
+          "securityStatus",
+          "yanked"
+        ],
+        "title": "VersionIdentity",
+        "type": "object"
+      },
+      "VersionIdentityDetail": {
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/VersionIdentity"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "reviewHistory": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReviewEventItem"
+            },
+            "title": "Reviewhistory",
+            "type": "array"
+          },
+          "securityDiff": {
+            "$ref": "#/components/schemas/SecurityDiff"
+          }
+        },
+        "required": [
+          "identity",
+          "manifest",
+          "securityDiff"
+        ],
+        "title": "VersionIdentityDetail",
+        "type": "object"
+      },
       "VersionsResponse": {
         "properties": {
           "versions": {
@@ -747,11 +1765,6 @@
             "description": "Validation Error"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "summary": "Review Version"
       }
     },
@@ -823,6 +1836,24 @@
           }
         ],
         "summary": "Yank Version"
+      }
+    },
+    "/api/v1/admin/review-queue": {
+      "get": {
+        "operationId": "review_queue_api_v1_admin_review_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Review Queue"
       }
     },
     "/api/v1/admin/users/{user_id}/suspend": {
@@ -1337,6 +2368,119 @@
         "summary": "Trigger Scan"
       }
     },
+    "/api/v1/auth/approve": {
+      "post": {
+        "operationId": "approve_device_api_v1_auth_approve_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_code",
+            "required": true,
+            "schema": {
+              "title": "User Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Device"
+      }
+    },
+    "/api/v1/auth/devices": {
+      "post": {
+        "operationId": "create_device_api_v1_auth_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceLoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Device"
+      }
+    },
+    "/api/v1/auth/devices/token": {
+      "post": {
+        "operationId": "poll_device_api_v1_auth_devices_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicePollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll Device"
+      }
+    },
     "/api/v1/auth/github": {
       "post": {
         "operationId": "github_login_api_v1_auth_github_post",
@@ -1373,6 +2517,206 @@
           }
         },
         "summary": "Github Login"
+      }
+    },
+    "/api/v1/catalog": {
+      "get": {
+        "operationId": "catalog_api_v1_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "framework",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework"
+            }
+          },
+          {
+            "in": "query",
+            "name": "models",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tags",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tags"
+            }
+          },
+          {
+            "in": "query",
+            "name": "review_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "security_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Security Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "permission",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Permission"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runtime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            }
+          },
+          {
+            "in": "query",
+            "name": "publisher_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Publisher Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog"
       }
     },
     "/api/v1/keys": {
@@ -1458,6 +2802,22 @@
         "summary": "Revoke Key"
       }
     },
+    "/api/v1/logout": {
+      "post": {
+        "operationId": "logout_api_v1_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout"
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "me_api_v1_me_get",
@@ -1479,6 +2839,193 @@
           }
         ],
         "summary": "Me"
+      }
+    },
+    "/api/v1/me/activity": {
+      "get": {
+        "operationId": "activity_api_v1_me_activity_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublisherActivity"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Activity"
+      }
+    },
+    "/api/v1/me/agreements": {
+      "get": {
+        "operationId": "my_agreements_api_v1_me_agreements_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "My Agreements"
+      },
+      "post": {
+        "operationId": "update_agreements_api_v1_me_agreements_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgreementsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agreements"
+      }
+    },
+    "/api/v1/me/namespaces": {
+      "get": {
+        "operationId": "namespaces_api_v1_me_namespaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NamespaceInfo"
+                  },
+                  "title": "Response Namespaces Api V1 Me Namespaces Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Namespaces"
+      }
+    },
+    "/api/v1/me/overview": {
+      "get": {
+        "operationId": "overview_api_v1_me_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublisherOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Overview"
+      }
+    },
+    "/api/v1/me/packages": {
+      "get": {
+        "operationId": "packages_api_v1_me_packages_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PackageSummary"
+                  },
+                  "title": "Response Packages Api V1 Me Packages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Packages"
+      }
+    },
+    "/api/v1/me/packages/{namespace}/{name}/versions/{version}": {
+      "get": {
+        "operationId": "version_identity_api_v1_me_packages__namespace___name__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionIdentityDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Identity"
       }
     },
     "/api/v1/namespaces": {
@@ -1590,6 +3137,160 @@
           }
         },
         "summary": "Revocation Feed"
+      }
+    },
+    "/api/v1/sessions": {
+      "get": {
+        "operationId": "my_sessions_api_v1_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "My Sessions"
+      }
+    },
+    "/api/v1/sessions/me": {
+      "delete": {
+        "operationId": "revoke_current_session_api_v1_sessions_me_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Revoke Current Session"
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "delete": {
+        "operationId": "revoke_my_session_api_v1_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke My Session"
+      }
+    },
+    "/auth/github/callback": {
+      "get": {
+        "operationId": "github_callback_auth_github_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "title": "State",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Callback"
+      }
+    },
+    "/auth/github/start": {
+      "get": {
+        "operationId": "github_start_auth_github_start_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "required": true,
+            "schema": {
+              "title": "Redirect Uri",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Start"
       }
     },
     "/health": {
